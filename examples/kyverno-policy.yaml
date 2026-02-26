@@ -1,0 +1,69 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: baseline-kyverno
+  annotations:
+    formalcloud.io/policy-id: org.baseline.cloud-security.kyverno
+    formalcloud.io/policy-version: "1"
+    formalcloud.io/policy-revision: "1.0.0-kyverno"
+    formalcloud.io/min-engine-version: "0.1.0"
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+    - name: disallow-privileged
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: Privileged containers are forbidden
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  privileged: false
+
+    - name: require-limits
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: Containers must set resource limits
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+
+    - name: require-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: Containers must run as non-root
+        pattern:
+          spec:
+            securityContext:
+              runAsNonRoot: true
+
+    - name: disallow-latest-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: Latest image tag is not allowed
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"

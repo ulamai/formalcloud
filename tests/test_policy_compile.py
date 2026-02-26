@@ -12,6 +12,7 @@ class PolicyCompileTests(unittest.TestCase):
         self.assertEqual(compiled.policy_revision, "1.0.0")
         self.assertEqual(compiled.version, 1)
         self.assertEqual(len(compiled.rules), 7)
+        self.assertEqual(len(compiled.exceptions), 0)
         self.assertEqual(len(compiled.digest), 64)
 
     def test_compile_legacy_policy_set_migrates_to_latest_schema(self) -> None:
@@ -22,6 +23,12 @@ class PolicyCompileTests(unittest.TestCase):
         self.assertEqual(compiled.compatibility.get("migrated_from"), "legacy/v0")
         self.assertEqual(compiled.version, 1)
         self.assertEqual(len(compiled.rules), 7)
+
+    def test_compile_policy_with_exceptions(self) -> None:
+        compiled = compile_policy_file(Path("examples/policies-with-exceptions.yaml"))
+        self.assertEqual(compiled.policy_set_id, "org.baseline.cloud-security.exceptions")
+        self.assertEqual(len(compiled.exceptions), 1)
+        self.assertEqual(compiled.exceptions[0].rule_id, "TF001")
 
 
 if __name__ == "__main__":

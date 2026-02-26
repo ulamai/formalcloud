@@ -1,0 +1,44 @@
+schema_version: formal-cloud.policy/v1
+policy:
+  id: org.baseline.cloud-security.exceptions
+  version: 1
+  revision: 1.0.0
+  compatibility:
+    min_engine_version: 0.1.0
+rules:
+  - id: TF001
+    title: No public S3 buckets
+    target: terraform
+    check: no_public_s3
+    severity: critical
+
+  - id: TF002
+    title: Encryption required for S3 and RDS
+    target: terraform
+    check: require_encryption
+    severity: high
+    params:
+      resource_types:
+        - aws_s3_bucket
+        - aws_db_instance
+
+  - id: TF003
+    title: No destructive changes in protected workspaces
+    target: terraform
+    check: no_destructive_changes
+    severity: high
+    params:
+      protected_workspaces:
+        - prod
+        - production
+
+exceptions:
+  - id: EXC-TF001-PUBLIC-ASSETS
+    rule_id: TF001
+    owner: platform-security@formalcloud.dev
+    reason: Temporary exception during migration of legacy static website bucket
+    approved_by: ciso@formalcloud.dev
+    ticket: SEC-1234
+    expires_at: 2099-01-01T00:00:00Z
+    entity_patterns:
+      - aws_s3_bucket.public_assets

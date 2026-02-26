@@ -5,6 +5,33 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class PolicyException:
+    exception_id: str
+    rule_id: str
+    reason: str
+    owner: str
+    expires_at: str
+    entity_patterns: tuple[str, ...]
+    approved_by: str | None
+    ticket: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        value: dict[str, Any] = {
+            "id": self.exception_id,
+            "rule_id": self.rule_id,
+            "reason": self.reason,
+            "owner": self.owner,
+            "expires_at": self.expires_at,
+            "entity_patterns": list(self.entity_patterns),
+        }
+        if self.approved_by:
+            value["approved_by"] = self.approved_by
+        if self.ticket:
+            value["ticket"] = self.ticket
+        return value
+
+
+@dataclass(frozen=True)
 class PolicyRule:
     rule_id: str
     title: str
@@ -32,6 +59,7 @@ class CompiledPolicySet:
     compatibility: dict[str, Any]
     version: int
     rules: tuple[PolicyRule, ...]
+    exceptions: tuple[PolicyException, ...]
     digest: str
 
     def to_dict(self) -> dict[str, Any]:
@@ -43,6 +71,7 @@ class CompiledPolicySet:
             "version": self.version,
             "policy_digest": self.digest,
             "rules": [rule.to_dict() for rule in self.rules],
+            "exceptions": [exc.to_dict() for exc in self.exceptions],
         }
 
 
@@ -70,6 +99,8 @@ class RuleResult:
     passed: bool
     evaluated_entities: int
     violations: tuple[RuleViolation, ...]
+    waived_violations: tuple[RuleViolation, ...]
+    applied_exceptions: tuple[dict[str, Any], ...]
     proof: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
@@ -82,5 +113,7 @@ class RuleResult:
             "passed": self.passed,
             "evaluated_entities": self.evaluated_entities,
             "violations": [v.to_dict() for v in self.violations],
+            "waived_violations": [v.to_dict() for v in self.waived_violations],
+            "applied_exceptions": list(self.applied_exceptions),
             "proof": self.proof,
         }

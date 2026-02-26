@@ -21,15 +21,23 @@ This project is built around three goals:
   - Stable policy schema: `formal-cloud.policy/v1`.
   - Typed rule schema (target + check + severity + params).
   - Legacy policy migration (`legacy/v0` -> `formal-cloud.policy/v1`).
+  - Rego subset adapter (`formal-cloud.rego-subset/v1`).
+  - Kyverno validate-subset adapter (`formal-cloud.kyverno-subset/v1`).
+  - Exception model (`owner`, `reason`, `expires_at`, `entity_patterns`).
   - Stable policy digest for reproducibility.
 - Verifier loop:
   - Deterministic check dispatch by rule ID.
+  - Exception-aware rule evaluation with waived violation evidence.
   - Rule-level proof object with hash commitments.
 - Trace logs:
   - JSONL event stream for compilation and verification phases.
 - Attestation:
   - HMAC-signed certificates.
   - Offline signature/integrity verification.
+- Policy bundles:
+  - Signed bundle format with version pinning (`formal-cloud.bundle/v1`).
+- Evidence exports:
+  - SARIF export for code scanning workflows.
 - Reproducibility benchmarking:
   - Corpus runner that checks stable decision and certificate IDs across repeated runs.
 
@@ -82,6 +90,26 @@ Backward compatibility:
 
 - Legacy files using top-level `version` + `rules` are still accepted.
 - Compiler migrates them to `formal-cloud.policy/v1` deterministically.
+- Rego subset files (`.rego`) are accepted through adapter-based compilation.
+- Kyverno policy files (`kyverno.io/v1`, `Policy` or `ClusterPolicy`) are accepted through validate-subset compilation.
+
+Rego subset adapter example (`deny` rules first):
+
+```rego
+package formalcloud.policies
+
+# fc.policy.id: org.baseline.cloud-security.rego
+# fc.policy.version: 1
+# fc.policy.revision: 1.0.0-rego
+# fc.policy.min_engine_version: 0.1.0
+
+# fc.id: TF001
+# fc.target: terraform
+# fc.check: no_public_s3
+deny["TF001"] {
+  input.target == "terraform"
+}
+```
 
 Compile policy file:
 
@@ -90,6 +118,24 @@ formal-cloud compile \
   --policies examples/policies.yaml \
   --out out/compiled-policies.json \
   --trace out/compile-trace.jsonl
+```
+
+Compile Rego subset policy:
+
+```bash
+formal-cloud compile \
+  --policies examples/policies.rego \
+  --out out/compiled-rego-policies.json \
+  --trace out/compile-rego-trace.jsonl
+```
+
+Compile Kyverno validate-subset policy:
+
+```bash
+formal-cloud compile \
+  --policies examples/kyverno-policy.yaml \
+  --out out/compiled-kyverno-policies.json \
+  --trace out/compile-kyverno-trace.jsonl
 ```
 
 Verify Terraform plan:
@@ -126,6 +172,40 @@ formal-cloud verify kubernetes \
   --trace out/k8s-trace.jsonl
 ```
 
+Verify using signed + pinned policy bundle:
+
+```bash
+formal-cloud bundle create \
+  --bundle-id org.formalcloud.bundle \
+  --bundle-version 1.0.0 \
+  --policy-file examples/policies.yaml \
+  --policy-file examples/policies.rego \
+  --signing-key-file examples/signing.key \
+  --signing-key-id local-dev \
+  --out out/policy-bundle.json
+
+formal-cloud verify terraform \
+  --bundle out/policy-bundle.json \
+  --policy-set-id org.baseline.cloud-security \
+  --bundle-version 1.0.0 \
+  --bundle-key-file examples/signing.key \
+  --bundle-require-signature \
+  --plan examples/terraform-plan.json \
+  --workspace prod \
+  --out out/terraform-certificate-from-bundle.json
+```
+
+Create/verify bundle explicitly:
+
+```bash
+formal-cloud bundle verify \
+  --bundle out/policy-bundle.json \
+  --expected-version 1.0.0 \
+  --key-file examples/signing.key \
+  --require-signature \
+  --out out/policy-bundle-verify-report.json
+```
+
 Offline attestation verification:
 
 ```bash
@@ -133,6 +213,14 @@ formal-cloud attest verify \
   --certificate out/terraform-certificate.signed.json \
   --key-file examples/signing.key \
   --out out/terraform-verify-report.json
+```
+
+Export certificate to SARIF:
+
+```bash
+formal-cloud export sarif \
+  --certificate out/terraform-certificate.json \
+  --out out/terraform-results.sarif.json
 ```
 
 Benchmark reproducibility corpus:
@@ -153,6 +241,19 @@ formal-cloud admission-webhook \
   --port 8443
 ```
 
+Run admission webhook with bundle policy source:
+
+```bash
+formal-cloud admission-webhook \
+  --bundle out/policy-bundle.json \
+  --policy-set-id org.baseline.cloud-security \
+  --bundle-version 1.0.0 \
+  --bundle-key-file examples/signing.key \
+  --bundle-require-signature \
+  --host 0.0.0.0 \
+  --port 8443
+```
+
 The webhook serves `/healthz` and admission POSTs. For production, terminate TLS in front of the service.
 
 Exit codes:
@@ -162,6 +263,7 @@ Exit codes:
 - `1`: execution error
 - `4`: certificate attestation verification failed
 - `5`: benchmark corpus failed
+- `6`: bundle verification failed
 
 Run tests (stdlib only):
 
@@ -204,7 +306,7 @@ Shipped GitHub Action assets:
 
 ## Roadmap (next)
 
-- Rego subset parser and compilation to this rule IR.
-- Signature support for certificates.
-- Admission webhook wrapper for Kubernetes.
+- Exception governance workflows (`audit` vs `enforce`, approval lifecycle).
+- Signed bundle distribution and remote registry support.
+- Differential evaluation against OPA/Kyverno for adapter parity.
 - Lean/Coq proof export for selected rule classes.

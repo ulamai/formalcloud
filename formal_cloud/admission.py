@@ -105,9 +105,17 @@ def evaluate_admission_review(
 
 def run_admission_webhook(policy_file: Path, host: str, port: int) -> None:
     compiled = compile_policy_file(policy_file, trace=None)
+    run_admission_webhook_compiled(compiled_policy=compiled, host=host, port=port)
+
+
+def run_admission_webhook_compiled(
+    compiled_policy: CompiledPolicySet, host: str, port: int
+) -> None:
+    if compiled_policy is None:
+        raise ValueError("compiled_policy is required")
 
     handler_class = type("ConfiguredAdmissionWebhookHandler", (AdmissionWebhookHandler,), {})
-    handler_class.compiled_policy = compiled
+    handler_class.compiled_policy = compiled_policy
 
     server = ThreadingHTTPServer((host, port), handler_class)
     print(
