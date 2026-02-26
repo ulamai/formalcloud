@@ -1,0 +1,51 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.8.5",
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket.secure_assets",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "secure_assets",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "bucket": "company-secure-assets",
+          "acl": "private",
+          "server_side_encryption_configuration": {
+            "rule": [
+              {
+                "apply_server_side_encryption_by_default": {
+                  "sse_algorithm": "aws:kms"
+                }
+              }
+            ]
+          }
+        },
+        "after_unknown": {}
+      }
+    },
+    {
+      "address": "aws_db_instance.main",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "name": "main",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "identifier": "main-prod-db",
+          "storage_encrypted": true
+        },
+        "after_unknown": {}
+      }
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+name: formal-cloud-gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  terraform-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Terraform formal gate
+        id: terraform
+        uses: ./.github/actions/formal-cloud-gate
+        with:
+          target: terraform
+          policy-file: examples/policies.yaml
+          terraform-plan: benchmarks/corpus/terraform-plan-secure.json
+          workspace: prod
+          output-dir: artifacts/terraform
+          signing-key: ${{ secrets.FORMAL_CLOUD_SIGNING_KEY }}
+          signing-key-id: github-actions
+
+      - name: Verify signed certificate (optional)
+        if: ${{ secrets.FORMAL_CLOUD_SIGNING_KEY != '' }}
+        run: |
+          python -m pip install -e .
+          printf '%s' "${{ secrets.FORMAL_CLOUD_SIGNING_KEY }}" > artifacts/terraform/signing.key
+          formal-cloud attest verify \
+            --certificate "${{ steps.terraform.outputs.certificate-path }}" \
+            --key-file artifacts/terraform/signing.key \
+            --out artifacts/terraform/verification-report.json
+
+      - name: Upload Terraform evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: formal-cloud-terraform-evidence
+          path: artifacts/terraform/
+
+  kubernetes-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Kubernetes formal gate
+        id: kubernetes
+        uses: ./.github/actions/formal-cloud-gate
+        with:
+          target: kubernetes
+          policy-file: examples/policies.yaml
+          manifests: |
+            benchmarks/corpus/k8s-manifest-secure.yaml
+          output-dir: artifacts/kubernetes
+          signing-key: ${{ secrets.FORMAL_CLOUD_SIGNING_KEY }}
+          signing-key-id: github-actions
+
+      - name: Verify signed certificate (optional)
+        if: ${{ secrets.FORMAL_CLOUD_SIGNING_KEY != '' }}
+        run: |
+          python -m pip install -e .
+          printf '%s' "${{ secrets.FORMAL_CLOUD_SIGNING_KEY }}" > artifacts/kubernetes/signing.key
+          formal-cloud attest verify \
+            --certificate "${{ steps.kubernetes.outputs.certificate-path }}" \
+            --key-file artifacts/kubernetes/signing.key \
+            --out artifacts/kubernetes/verification-report.json
+
+      - name: Upload Kubernetes evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: formal-cloud-kubernetes-evidence
+          path: artifacts/kubernetes/

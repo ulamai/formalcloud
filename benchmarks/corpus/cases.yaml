@@ -1,0 +1,29 @@
+schema_version: formal-cloud.benchmark/v1
+cases:
+  - id: terraform_reject_prod_insecure
+    target: terraform
+    policies: ../../examples/policies.yaml
+    plan: ../../examples/terraform-plan.json
+    workspace: prod
+    expected_decision: reject
+
+  - id: terraform_accept_prod_secure
+    target: terraform
+    policies: ../../examples/policies.yaml
+    plan: terraform-plan-secure.json
+    workspace: prod
+    expected_decision: accept
+
+  - id: kubernetes_reject_insecure
+    target: kubernetes
+    policies: ../../examples/policies.yaml
+    manifests:
+      - ../../examples/k8s-manifest.yaml
+    expected_decision: reject
+
+  - id: kubernetes_accept_secure
+    target: kubernetes
+    policies: ../../examples/policies.yaml
+    manifests:
+      - k8s-manifest-secure.yaml
+    expected_decision: accept

@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-secure
+  namespace: production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-secure
+  template:
+    metadata:
+      labels:
+        app: api-secure
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: web
+          image: ghcr.io/example/api@sha256:1111111111111111111111111111111111111111111111111111111111111111
+          securityContext:
+            runAsNonRoot: true
+            privileged: false
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "100m"
+              memory: "128Mi"

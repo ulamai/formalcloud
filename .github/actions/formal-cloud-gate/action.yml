@@ -1,0 +1,116 @@
+name: formal-cloud-gate
+description: Run formal-cloud policy verification and emit certificate artifacts
+
+inputs:
+  target:
+    description: terraform or kubernetes
+    required: true
+  policy-file:
+    description: Path to policy YAML/JSON
+    required: true
+  terraform-plan:
+    description: Path to terraform show -json output
+    required: false
+  workspace:
+    description: Terraform workspace name
+    required: false
+    default: default
+  manifests:
+    description: Newline-separated Kubernetes manifest paths
+    required: false
+  output-dir:
+    description: Output directory for certificate and trace artifacts
+    required: false
+    default: artifacts/formal-cloud
+  python-version:
+    description: Python version for action runtime
+    required: false
+    default: "3.12"
+  signing-key:
+    description: Optional HMAC signing key
+    required: false
+  signing-key-id:
+    description: Signature key identifier
+    required: false
+    default: github-actions
+
+outputs:
+  certificate-path:
+    description: Path to generated certificate JSON
+    value: ${{ steps.run.outputs.certificate_path }}
+  trace-path:
+    description: Path to generated trace JSONL
+    value: ${{ steps.run.outputs.trace_path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install formal-cloud
+      shell: bash
+      run: |
+        set -euo pipefail
+        python -m pip install -e .
+
+    - name: Run formal gate
+      id: run
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        output_dir="${{ inputs.output-dir }}"
+        mkdir -p "$output_dir"
+        cert="$output_dir/certificate.json"
+        trace="$output_dir/trace.jsonl"
+
+        sign_args=()
+        if [ -n "${{ inputs.signing-key }}" ]; then
+          key_file="$output_dir/.formal-cloud-signing.key"
+          printf '%s' "${{ inputs.signing-key }}" > "$key_file"
+          sign_args+=(--signing-key-file "$key_file" --signing-key-id "${{ inputs.signing-key-id }}")
+        fi
+
+        target="${{ inputs.target }}"
+        if [ "$target" = "terraform" ]; then
+          if [ -z "${{ inputs.terraform-plan }}" ]; then
+            echo "terraform-plan input is required for terraform target" >&2
+            exit 1
+          fi
+
+          formal-cloud verify terraform \
+            --policies "${{ inputs.policy-file }}" \
+            --plan "${{ inputs.terraform-plan }}" \
+            --workspace "${{ inputs.workspace }}" \
+            --out "$cert" \
+            --trace "$trace" \
+            "${sign_args[@]}"
+        elif [ "$target" = "kubernetes" ]; then
+          if [ -z "${{ inputs.manifests }}" ]; then
+            echo "manifests input is required for kubernetes target" >&2
+            exit 1
+          fi
+
+          manifest_args=()
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then
+              manifest_args+=(--manifest "$line")
+            fi
+          done <<< "${{ inputs.manifests }}"
+
+          formal-cloud verify kubernetes \
+            --policies "${{ inputs.policy-file }}" \
+            --out "$cert" \
+            --trace "$trace" \
+            "${manifest_args[@]}" \
+            "${sign_args[@]}"
+        else
+          echo "unsupported target: $target" >&2
+          exit 1
+        fi
+
+        echo "certificate_path=$cert" >> "$GITHUB_OUTPUT"
+        echo "trace_path=$trace" >> "$GITHUB_OUTPUT"

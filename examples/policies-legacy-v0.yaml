@@ -1,0 +1,51 @@
+version: 1
+rules:
+  - id: TF001
+    title: No public S3 buckets
+    target: terraform
+    check: no_public_s3
+    severity: critical
+
+  - id: TF002
+    title: Encryption required for S3 and RDS
+    target: terraform
+    check: require_encryption
+    severity: high
+    params:
+      resource_types:
+        - aws_s3_bucket
+        - aws_db_instance
+
+  - id: TF003
+    title: No destructive changes in protected workspaces
+    target: terraform
+    check: no_destructive_changes
+    severity: high
+    params:
+      protected_workspaces:
+        - prod
+        - production
+
+  - id: K8S001
+    title: Privileged containers are forbidden
+    target: kubernetes
+    check: no_privileged_containers
+    severity: critical
+
+  - id: K8S002
+    title: Containers require resource limits
+    target: kubernetes
+    check: require_resources_limits
+    severity: medium
+
+  - id: K8S003
+    title: Disallow mutable image tags
+    target: kubernetes
+    check: disallow_latest_tag
+    severity: high
+
+  - id: K8S004
+    title: Require non-root runtime
+    target: kubernetes
+    check: require_non_root
+    severity: high

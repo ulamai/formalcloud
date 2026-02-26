@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "formal-cloud"
+version = "0.1.0"
+description = "Formal checks for cloud infrastructure and policy-as-code compliance"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "formal-cloud" }
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = []
+
+[project.scripts]
+formal-cloud = "formal_cloud.cli:main"
+
+[tool.setuptools]
+packages = ["formal_cloud"]
