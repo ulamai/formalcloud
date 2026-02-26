@@ -1,0 +1,7 @@
+- id: formalcloud-k8s-changed
+  name: FormalCloud Kubernetes changed-files gate
+  description: Run FormalCloud policy checks only on changed Kubernetes manifest files.
+  entry: scripts/precommit-formalcloud-k8s.sh
+  language: script
+  pass_filenames: true
+  files: \.(ya?ml|json)$

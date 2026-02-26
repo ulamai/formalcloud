@@ -13,6 +13,7 @@ class BenchmarkTests(unittest.TestCase):
             self.assertTrue(case["stable_decision"])
             self.assertTrue(case["stable_certificate"])
             self.assertTrue(case["expected_match"])
+            self.assertTrue(case["expected_certificate_match"])
 
 
 if __name__ == "__main__":

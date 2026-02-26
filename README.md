@@ -23,12 +23,15 @@ This project is built around three goals:
   - Legacy policy migration (`legacy/v0` -> `formal-cloud.policy/v1`).
   - Rego subset adapter (`formal-cloud.rego-subset/v1`).
   - Kyverno validate-subset adapter (`formal-cloud.kyverno-subset/v1`).
-  - Exception model (`owner`, `reason`, `expires_at`, `entity_patterns`).
+  - Exception model (`owner`, `reason`, `approved_by`, `expires_at`, `entity_patterns`, `ticket`).
+  - Exception policy constraints (`max_ttl_days`, `required_approver_regex`).
   - Stable policy digest for reproducibility.
 - Verifier loop:
   - Deterministic check dispatch by rule ID.
   - Exception-aware rule evaluation with waived violation evidence.
   - Rule-level proof object with hash commitments.
+  - Terraform confidence classification (`proven` / `assumed` / `unknown`).
+  - Exception debt metrics in certificate summaries.
 - Trace logs:
   - JSONL event stream for compilation and verification phases.
 - Attestation:
@@ -37,9 +40,12 @@ This project is built around three goals:
 - Policy bundles:
   - Signed bundle format with version pinning (`formal-cloud.bundle/v1`).
 - Evidence exports:
-  - SARIF export for code scanning workflows.
+  - SARIF, JUnit, GitHub Checks, in-toto statement, and evidence-pack exports.
+- Replay and diff:
+  - Deterministic replay checks against expected certificates.
+  - Policy IR diff (`left` vs `right`) for adapter parity reviews.
 - Reproducibility benchmarking:
-  - Corpus runner that checks stable decision and certificate IDs across repeated runs.
+  - Corpus runner for decision/certificate stability plus expected certificate regression IDs.
 
 ## Supported checks
 
@@ -78,6 +84,9 @@ policy:
   revision: 1.0.0
   compatibility:
     min_engine_version: 0.1.0
+  exception_policy:
+    max_ttl_days: 30
+    required_approver_regex: '^[^@]+@example\.com$'
 rules:
   - id: TF001
     title: No public S3 buckets
@@ -172,6 +181,18 @@ formal-cloud verify kubernetes \
   --trace out/k8s-trace.jsonl
 ```
 
+Verify Kubernetes with changed-files fast path:
+
+```bash
+git diff --name-only --cached > out/changed-files.txt
+
+formal-cloud verify kubernetes \
+  --policies examples/policies.yaml \
+  --manifest-dir . \
+  --changed-files-file out/changed-files.txt \
+  --out out/k8s-certificate-changed-only.json
+```
+
 Verify using signed + pinned policy bundle:
 
 ```bash
@@ -215,12 +236,69 @@ formal-cloud attest verify \
   --out out/terraform-verify-report.json
 ```
 
+Diff policy semantics (adapter parity or revision review):
+
+```bash
+formal-cloud policy diff \
+  --left examples/policies.yaml \
+  --right examples/policies.rego \
+  --out out/policy-diff.json \
+  --fail-on-diff
+```
+
+Replay a prior certificate deterministically:
+
+```bash
+formal-cloud replay terraform \
+  --policies examples/policies.yaml \
+  --plan examples/terraform-plan.json \
+  --workspace prod \
+  --expected-certificate out/terraform-certificate.json \
+  --out out/replay-report.json
+```
+
 Export certificate to SARIF:
 
 ```bash
 formal-cloud export sarif \
   --certificate out/terraform-certificate.json \
   --out out/terraform-results.sarif.json
+```
+
+Export certificate to JUnit XML:
+
+```bash
+formal-cloud export junit \
+  --certificate out/terraform-certificate.json \
+  --out out/terraform-results.junit.xml \
+  --include-waived
+```
+
+Export certificate to GitHub Checks payload:
+
+```bash
+formal-cloud export github-checks \
+  --certificate out/terraform-certificate.json \
+  --out out/terraform-github-checks.json
+```
+
+Export certificate as in-toto statement:
+
+```bash
+formal-cloud export intoto \
+  --certificate out/terraform-certificate.json \
+  --out out/terraform.intoto.json
+```
+
+Build an evidence pack for audits:
+
+```bash
+formal-cloud export evidence-pack \
+  --certificate out/terraform-certificate.json \
+  --trace out/terraform-trace.jsonl \
+  --bundle-report out/policy-bundle-verify-report.json \
+  --extra-file out/terraform-results.sarif.json \
+  --out-dir out/evidence-pack
 ```
 
 Benchmark reproducibility corpus:
@@ -231,6 +309,8 @@ formal-cloud benchmark run \
   --iterations 5 \
   --out out/benchmark-report.json
 ```
+
+`benchmarks/corpus/cases.yaml` supports optional `expected_certificate_id` values for regression-lock mode.
 
 Run admission webhook:
 
@@ -259,11 +339,13 @@ The webhook serves `/healthz` and admission POSTs. For production, terminate TLS
 Exit codes:
 
 - `0`: verification accepted
-- `3`: verification rejected
 - `1`: execution error
+- `3`: verification rejected
 - `4`: certificate attestation verification failed
 - `5`: benchmark corpus failed
 - `6`: bundle verification failed
+- `7`: replay verification mismatch
+- `8`: policy diff mismatch (with `--fail-on-diff`)
 
 Run tests (stdlib only):
 
@@ -300,13 +382,42 @@ Shipped GitHub Action assets:
 - Composite action: `.github/actions/formal-cloud-gate/action.yml`
 - Workflow example: `.github/workflows/formal-cloud-gate.yml`
 
+## Pre-commit fast path
+
+Repository assets for local hook integration:
+
+- Hook catalog: `.pre-commit-hooks.yaml`
+- Local config example: `.pre-commit-config.yaml`
+- Hook script: `scripts/precommit-formalcloud-k8s.sh`
+
+Run:
+
+```bash
+pre-commit install
+pre-commit run --all-files
+```
+
+## Additional docs
+
+- Compatibility matrix: `docs/compatibility-matrix.md`
+- Benchmark regression mode: `docs/benchmarks/regression-mode.md`
+- Deterministic replay: `docs/replay-determinism.md`
+- Incident examples:
+  - `docs/incidents/public-s3-migration.md`
+  - `docs/incidents/k8s-privileged-workload.md`
+- Migration guides:
+  - `docs/migrations/OPA.md`
+  - `docs/migrations/Kyverno.md`
+  - `docs/migrations/Checkov.md`
+  - `docs/migrations/tfsec.md`
+
 ## Security note
 
 `terraform show -json` can contain plaintext sensitive values. Treat plan JSON and generated evidence artifacts as sensitive build artifacts and scope retention/access appropriately.
 
 ## Roadmap (next)
 
-- Exception governance workflows (`audit` vs `enforce`, approval lifecycle).
-- Signed bundle distribution and remote registry support.
-- Differential evaluation against OPA/Kyverno for adapter parity.
-- Lean/Coq proof export for selected rule classes.
+- Wider Terraform semantics (cross-resource graph checks, deeper unknown handling).
+- Expanded adapter coverage (larger Rego subset, Kyverno mutate/generate parity where feasible).
+- Remote bundle distribution/rotation workflows.
+- Lean/Coq proof export for selected invariant families.

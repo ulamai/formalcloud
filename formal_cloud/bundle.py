@@ -264,6 +264,7 @@ def _compiled_to_policy_document(compiled: CompiledPolicySet) -> dict[str, Any]:
             "version": compiled.version,
             "revision": compiled.policy_revision,
             "compatibility": compiled.compatibility,
+            "exception_policy": compiled.exception_policy,
         },
         "rules": [rule.to_dict() for rule in compiled.rules],
         "exceptions": [exc.to_dict() for exc in compiled.exceptions],

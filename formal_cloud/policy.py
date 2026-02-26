@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +58,7 @@ def compile_policy_document(
     version = canonical["version"]
     rules = canonical["rules"]
     exceptions = canonical["exceptions"]
+    exception_policy = canonical["exception_policy"]
 
     if not isinstance(rules, list) or not rules:
         raise ValueError(f"policy rules in {source} must be a non-empty list")
@@ -109,7 +111,9 @@ def compile_policy_document(
     compiled_exceptions = _compile_exceptions(
         exceptions=exceptions,
         rule_ids={rule.rule_id for rule in compiled_rules},
+        exception_policy=exception_policy,
         source=source,
+        now_utc=datetime.now(timezone.utc),
     )
     sorted_exceptions = sorted(compiled_exceptions, key=lambda item: item.exception_id)
 
@@ -119,6 +123,7 @@ def compile_policy_document(
         policy_set_id=canonical["policy_set_id"],
         policy_revision=canonical["policy_revision"],
         compatibility=canonical["compatibility"],
+        exception_policy=exception_policy,
         version=version,
         rules=tuple(compiled_rules),
         exceptions=tuple(sorted_exceptions),
@@ -128,6 +133,7 @@ def compile_policy_document(
                 "policy_set_id": canonical["policy_set_id"],
                 "policy_revision": canonical["policy_revision"],
                 "compatibility": canonical["compatibility"],
+                "exception_policy": exception_policy,
                 "version": version,
                 "rules": [rule.to_dict() for rule in compiled_rules],
                 "exceptions": [exc.to_dict() for exc in sorted_exceptions],
@@ -146,6 +152,7 @@ def compile_policy_document(
                 "policy_digest": compiled.digest,
                 "rule_count": len(compiled.rules),
                 "exception_count": len(compiled.exceptions),
+                "exception_policy": compiled.exception_policy,
             },
         )
 
@@ -177,6 +184,7 @@ def _normalize_policy_document(
     version = policy_meta.get("version")
     policy_revision = policy_meta.get("revision")
     compatibility = policy_meta.get("compatibility") or {}
+    exception_policy = policy_meta.get("exception_policy") or {}
 
     if not isinstance(policy_set_id, str) or not policy_set_id.strip():
         raise ValueError(f"policy.id in {source} must be a non-empty string")
@@ -186,14 +194,18 @@ def _normalize_policy_document(
         raise ValueError(f"policy.revision in {source} must be a non-empty string")
     if not isinstance(compatibility, dict):
         raise ValueError(f"policy.compatibility in {source} must be a mapping")
+    if not isinstance(exception_policy, dict):
+        raise ValueError(f"policy.exception_policy in {source} must be a mapping")
 
     normalized_compatibility = _normalize_compatibility(compatibility, source=source)
+    normalized_exception_policy = _normalize_exception_policy(exception_policy, source=source)
 
     return {
         "schema_version": schema_version,
         "policy_set_id": policy_set_id,
         "policy_revision": policy_revision,
         "compatibility": normalized_compatibility,
+        "exception_policy": normalized_exception_policy,
         "version": version,
         "rules": rules,
         "exceptions": exceptions,
@@ -216,6 +228,7 @@ def _migrate_legacy_document(
         "compatibility": {
             "migrated_from": LEGACY_SCHEMA_VERSION,
         },
+        "exception_policy": {},
         "version": version,
         "rules": rules,
         "exceptions": [],
@@ -255,7 +268,11 @@ def _normalize_compatibility(compatibility: dict[str, Any], source: str) -> dict
 
 
 def _compile_exceptions(
-    exceptions: Any, rule_ids: set[str], source: str
+    exceptions: Any,
+    rule_ids: set[str],
+    exception_policy: dict[str, Any],
+    source: str,
+    now_utc: datetime,
 ) -> list[PolicyException]:
     if exceptions is None:
         return []
@@ -311,9 +328,7 @@ def _compile_exceptions(
                     f"exception '{exception_id}' in {source} has invalid entity pattern"
                 )
 
-        if approved_by is not None and (
-            not isinstance(approved_by, str) or not approved_by.strip()
-        ):
+        if not isinstance(approved_by, str) or not approved_by.strip():
             raise ValueError(
                 f"exception '{exception_id}' in {source} approved_by must be non-empty string"
             )
@@ -321,6 +336,15 @@ def _compile_exceptions(
             raise ValueError(
                 f"exception '{exception_id}' in {source} ticket must be non-empty string"
             )
+
+        _enforce_exception_policy(
+            exception_id=exception_id,
+            approved_by=approved_by,
+            expires_at=normalized_expires_at,
+            exception_policy=exception_policy,
+            source=source,
+            now_utc=now_utc,
+        )
 
         seen_ids.add(exception_id)
         compiled.append(
@@ -370,3 +394,68 @@ def _parse_exception_expiry(expires_at: str) -> datetime:
         return datetime.fromisoformat(normalized)
     except ValueError as exc:
         raise ValueError(f"invalid expires_at '{expires_at}'") from exc
+
+
+def _normalize_exception_policy(exception_policy: dict[str, Any], source: str) -> dict[str, Any]:
+    allowed_keys = {"max_ttl_days", "required_approver_regex"}
+    normalized: dict[str, Any] = {}
+
+    for key, value in exception_policy.items():
+        if key not in allowed_keys:
+            raise ValueError(f"unsupported exception_policy key '{key}' in {source}")
+
+        if key == "max_ttl_days":
+            if not isinstance(value, int) or value < 1:
+                raise ValueError(
+                    f"exception_policy.max_ttl_days in {source} must be integer >= 1"
+                )
+            normalized[key] = value
+            continue
+
+        if key == "required_approver_regex":
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"exception_policy.required_approver_regex in {source} must be non-empty string"
+                )
+            try:
+                re.compile(value)
+            except re.error as exc:
+                raise ValueError(
+                    f"invalid exception_policy.required_approver_regex in {source}: {exc}"
+                ) from exc
+            normalized[key] = value
+            continue
+
+    return normalized
+
+
+def _enforce_exception_policy(
+    exception_id: str,
+    approved_by: str,
+    expires_at: str,
+    exception_policy: dict[str, Any],
+    source: str,
+    now_utc: datetime,
+) -> None:
+    approver_pattern = exception_policy.get("required_approver_regex")
+    if isinstance(approver_pattern, str) and not re.match(approver_pattern, approved_by):
+        raise ValueError(
+            f"exception '{exception_id}' in {source} approved_by '{approved_by}' "
+            "does not satisfy exception_policy.required_approver_regex"
+        )
+
+    max_ttl_days = exception_policy.get("max_ttl_days")
+    if isinstance(max_ttl_days, int):
+        expiry = _parse_utc_datetime(expires_at)
+        max_expiry = now_utc + timedelta(days=max_ttl_days)
+        if expiry > max_expiry:
+            raise ValueError(
+                f"exception '{exception_id}' in {source} exceeds max_ttl_days={max_ttl_days}"
+            )
+
+
+def _parse_utc_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)

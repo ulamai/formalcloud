@@ -61,6 +61,7 @@ def _run_case(raw_case: Any, base_dir: Path, iterations: int) -> dict[str, Any]:
     case_id = _require_str(raw_case, "id")
     target = _require_str(raw_case, "target")
     expected_decision = _require_str(raw_case, "expected_decision")
+    expected_certificate_id = raw_case.get("expected_certificate_id")
     policies_path = _resolve_path(base_dir, _require_str(raw_case, "policies"))
 
     if target not in {"terraform", "kubernetes"}:
@@ -68,6 +69,12 @@ def _run_case(raw_case: Any, base_dir: Path, iterations: int) -> dict[str, Any]:
     if expected_decision not in {"accept", "reject"}:
         raise ValueError(
             f"case '{case_id}' has unsupported expected_decision '{expected_decision}'"
+        )
+    if expected_certificate_id is not None and (
+        not isinstance(expected_certificate_id, str) or not expected_certificate_id.strip()
+    ):
+        raise ValueError(
+            f"case '{case_id}' expected_certificate_id must be non-empty string when provided"
         )
 
     decisions: list[str] = []
@@ -109,17 +116,27 @@ def _run_case(raw_case: Any, base_dir: Path, iterations: int) -> dict[str, Any]:
     stable_decision = len(set(decisions)) == 1
     stable_certificate = len(set(certificate_ids)) == 1
     expected_match = all(decision == expected_decision for decision in decisions)
+    expected_certificate_match = (
+        True
+        if expected_certificate_id is None
+        else all(cert_id == expected_certificate_id for cert_id in certificate_ids)
+    )
 
     return {
         "id": case_id,
         "target": target,
         "expected_decision": expected_decision,
+        "expected_certificate_id": expected_certificate_id,
         "decisions": decisions,
         "certificate_ids": certificate_ids,
         "stable_decision": stable_decision,
         "stable_certificate": stable_certificate,
         "expected_match": expected_match,
-        "pass": stable_decision and stable_certificate and expected_match,
+        "expected_certificate_match": expected_certificate_match,
+        "pass": stable_decision
+        and stable_certificate
+        and expected_match
+        and expected_certificate_match,
         "timing_ms": {
             "min": round(min(durations_ms), 3),
             "max": round(max(durations_ms), 3),

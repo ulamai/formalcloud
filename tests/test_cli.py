@@ -209,6 +209,229 @@ class CLITests(unittest.TestCase):
             sarif_data = load_json(sarif)
             self.assertEqual(sarif_data.get("version"), "2.1.0")
 
+    def test_cli_policy_diff_and_fail_on_diff(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            diff_json = Path(tmpdir) / "diff.json"
+            rc = main(
+                [
+                    "policy",
+                    "diff",
+                    "--left",
+                    "examples/policies.yaml",
+                    "--right",
+                    "examples/policies-with-exceptions.yaml",
+                    "--out",
+                    str(diff_json),
+                ]
+            )
+            self.assertEqual(rc, 0)
+            diff = load_json(diff_json)
+            self.assertTrue(diff["rules"]["removed"])
+            self.assertEqual(diff["exceptions"]["added"], ["EXC-TF001-PUBLIC-ASSETS"])
+
+            fail_rc = main(
+                [
+                    "policy",
+                    "diff",
+                    "--left",
+                    "examples/policies.yaml",
+                    "--right",
+                    "examples/policies-with-exceptions.yaml",
+                    "--out",
+                    str(diff_json),
+                    "--fail-on-diff",
+                ]
+            )
+            self.assertEqual(fail_rc, 8)
+
+    def test_cli_replay_and_extended_exports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cert = Path(tmpdir) / "certificate.json"
+            trace = Path(tmpdir) / "trace.jsonl"
+            replay_report = Path(tmpdir) / "replay-report.json"
+            junit = Path(tmpdir) / "results.junit.xml"
+            checks = Path(tmpdir) / "checks.json"
+            intoto = Path(tmpdir) / "statement.intoto.json"
+            pack_dir = Path(tmpdir) / "evidence-pack"
+
+            verify_rc = main(
+                [
+                    "verify",
+                    "terraform",
+                    "--policies",
+                    "examples/policies.yaml",
+                    "--plan",
+                    "examples/terraform-plan.json",
+                    "--workspace",
+                    "prod",
+                    "--trace",
+                    str(trace),
+                    "--out",
+                    str(cert),
+                ]
+            )
+            self.assertEqual(verify_rc, 3)
+
+            replay_rc = main(
+                [
+                    "replay",
+                    "terraform",
+                    "--policies",
+                    "examples/policies.yaml",
+                    "--plan",
+                    "examples/terraform-plan.json",
+                    "--workspace",
+                    "prod",
+                    "--expected-certificate",
+                    str(cert),
+                    "--out",
+                    str(replay_report),
+                ]
+            )
+            self.assertEqual(replay_rc, 0)
+            self.assertTrue(load_json(replay_report)["valid"])
+
+            junit_rc = main(
+                [
+                    "export",
+                    "junit",
+                    "--certificate",
+                    str(cert),
+                    "--out",
+                    str(junit),
+                    "--include-waived",
+                ]
+            )
+            self.assertEqual(junit_rc, 0)
+            self.assertIn("<testsuite", junit.read_text(encoding="utf-8"))
+
+            checks_rc = main(
+                [
+                    "export",
+                    "github-checks",
+                    "--certificate",
+                    str(cert),
+                    "--out",
+                    str(checks),
+                ]
+            )
+            self.assertEqual(checks_rc, 0)
+            checks_payload = load_json(checks)
+            self.assertEqual(checks_payload["conclusion"], "failure")
+
+            intoto_rc = main(
+                [
+                    "export",
+                    "intoto",
+                    "--certificate",
+                    str(cert),
+                    "--out",
+                    str(intoto),
+                ]
+            )
+            self.assertEqual(intoto_rc, 0)
+            intoto_statement = load_json(intoto)
+            self.assertEqual(intoto_statement["_type"], "https://in-toto.io/Statement/v1")
+
+            evidence_rc = main(
+                [
+                    "export",
+                    "evidence-pack",
+                    "--certificate",
+                    str(cert),
+                    "--trace",
+                    str(trace),
+                    "--extra-file",
+                    "examples/policies.yaml",
+                    "--out-dir",
+                    str(pack_dir),
+                ]
+            )
+            self.assertEqual(evidence_rc, 0)
+            manifest = load_json(pack_dir / "manifest.json")
+            self.assertGreaterEqual(len(manifest["files"]), 3)
+            self.assertEqual(manifest["certificate_id"], load_json(cert)["certificate_id"])
+
+    def test_cli_kubernetes_changed_files_fast_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            changed = Path(tmpdir) / "changed-files.txt"
+            changed.write_text("examples/k8s-manifest.yaml\n", encoding="utf-8")
+
+            cert = Path(tmpdir) / "k8s-certificate.json"
+            rc = main(
+                [
+                    "verify",
+                    "kubernetes",
+                    "--policies",
+                    "examples/policies.yaml",
+                    "--manifest-dir",
+                    ".",
+                    "--changed-files-file",
+                    str(changed),
+                    "--out",
+                    str(cert),
+                ]
+            )
+            self.assertEqual(rc, 3)
+            self.assertEqual(load_json(cert)["decision"], "reject")
+
+            changed.write_text("README.md\n", encoding="utf-8")
+            empty_cert = Path(tmpdir) / "k8s-empty-certificate.json"
+            empty_rc = main(
+                [
+                    "verify",
+                    "kubernetes",
+                    "--policies",
+                    "examples/policies.yaml",
+                    "--manifest-dir",
+                    ".",
+                    "--changed-files-file",
+                    str(changed),
+                    "--out",
+                    str(empty_cert),
+                ]
+            )
+            self.assertEqual(empty_rc, 0)
+            empty_data = load_json(empty_cert)
+            self.assertEqual(empty_data["decision"], "accept")
+            self.assertEqual(empty_data["subject"]["metadata"]["resource_count"], 0)
+
+    def test_cli_replay_kubernetes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cert = Path(tmpdir) / "k8s-certificate.json"
+            report = Path(tmpdir) / "k8s-replay-report.json"
+
+            verify_rc = main(
+                [
+                    "verify",
+                    "kubernetes",
+                    "--policies",
+                    "examples/policies.yaml",
+                    "--manifest",
+                    "examples/k8s-manifest.yaml",
+                    "--out",
+                    str(cert),
+                ]
+            )
+            self.assertEqual(verify_rc, 3)
+
+            replay_rc = main(
+                [
+                    "replay",
+                    "kubernetes",
+                    "--policies",
+                    "examples/policies.yaml",
+                    "--manifest",
+                    "examples/k8s-manifest.yaml",
+                    "--expected-certificate",
+                    str(cert),
+                    "--out",
+                    str(report),
+                ]
+            )
+            self.assertEqual(replay_rc, 0)
+            self.assertTrue(load_json(report)["valid"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -34,7 +34,7 @@ def load_and_normalize_manifests(paths: list[Path]) -> dict[str, Any]:
 
             resources.append(
                 {
-                    "source": str(path),
+                    "source": _stable_source_path(path),
                     "kind": kind,
                     "name": name,
                     "namespace": namespace,
@@ -198,3 +198,12 @@ def _missing_tag(image: str) -> bool:
     else:
         tail = image
     return ":" not in tail
+
+
+def _stable_source_path(path: Path) -> str:
+    resolved = path.resolve()
+    cwd = Path.cwd().resolve()
+    try:
+        return str(resolved.relative_to(cwd))
+    except ValueError:
+        return str(path)

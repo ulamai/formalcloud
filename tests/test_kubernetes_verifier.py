@@ -10,6 +10,7 @@ class KubernetesVerifierTests(unittest.TestCase):
     def test_kubernetes_verification_rejects_insecure_manifest(self) -> None:
         compiled = compile_policy_file(Path("examples/policies.yaml"))
         normalized = load_and_normalize_manifests([Path("examples/k8s-manifest.yaml")])
+        self.assertEqual(normalized["resources"][0]["source"], "examples/k8s-manifest.yaml")
 
         certificate = verify_kubernetes(compiled, normalized)
 

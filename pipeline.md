@@ -111,3 +111,67 @@
 3. SARIF exporter for code scanning UX.
 4. Policy bundle format with version pinning and signature verification.
 5. Kyverno `validate` subset adapter for admission parity.
+
+## Sprint Plan (Differentiation Wave)
+
+### Milestone M1: Verifiable Decision Plane
+
+- Issue FC-101: replay command to recompute and assert certificate ID determinism.
+- Issue FC-102: in-toto/SLSA-style attestation export from certificate artifacts.
+- Issue FC-103: offline verification docs and deterministic replay examples.
+
+### Milestone M2: One Semantics, Many Policy Languages
+
+- Issue FC-201: policy IR diff command (`source A` vs `source B`) with machine-readable output.
+- Issue FC-202: adapter parity tests across native/Rego/Kyverno for overlapping rule semantics.
+- Issue FC-203: published compatibility matrix for adapter subsets and caveats.
+
+### Milestone M3: Deep Change Semantics
+
+- Issue FC-301: Terraform confidence model (`proven`/`assumed`/`unknown`) from plan characteristics.
+- Issue FC-302: certificate-level confidence summary and subject risk context.
+- Issue FC-303: unknown/module-driven semantics regression tests.
+
+### Milestone M4: Exception Governance
+
+- Issue FC-401: mandatory exception fields (`owner`, `reason`, `approved_by`, `expires_at`).
+- Issue FC-402: exception policy constraints (`max_ttl_days`, `approver_regex`).
+- Issue FC-403: exception debt metrics in certificate summary.
+
+### Milestone M5: CI/Audit Workflow Fit
+
+- Issue FC-501: JUnit export for CI test-report ingestion.
+- Issue FC-502: GitHub Checks annotations export.
+- Issue FC-503: evidence-pack export (certificate + trace + bundle verification + metadata manifest).
+- Issue FC-504: changed-files fast path for Kubernetes verification and pre-commit workflow.
+
+### Milestone M6: Public Proof Assets
+
+- Issue FC-601: benchmark regression mode with expected certificate IDs.
+- Issue FC-602: incident-style examples demonstrating stronger guarantees than scanner-only checks.
+- Issue FC-603: migration guides from OPA/Kyverno/Checkov/tfsec to FormalCloud adapters and IR.
+
+## Implementation Status (Current Branch)
+
+1. M1 Verifiable Decision Plane: implemented.
+   - `formal-cloud replay terraform|kubernetes`
+   - `formal-cloud export intoto`
+2. M2 One Semantics, Many Policy Languages: implemented baseline.
+   - `formal-cloud policy diff`
+   - Adapter parity tests for native/Rego/Kyverno overlap
+   - `docs/compatibility-matrix.md`
+3. M3 Deep Change Semantics: implemented baseline.
+   - Terraform confidence model (`proven` / `assumed` / `unknown`)
+   - Certificate confidence summary + subject analysis metadata
+4. M4 Exception Governance: implemented baseline.
+   - Mandatory exception fields (`owner`, `reason`, `approved_by`, `expires_at`)
+   - Exception policy constraints (`max_ttl_days`, `required_approver_regex`)
+   - Exception debt metrics in certificate summary
+5. M5 CI/Audit Workflow Fit: implemented.
+   - Exports: SARIF, JUnit, GitHub Checks, evidence-pack
+   - Changed-files fast path for Kubernetes verification
+   - Pre-commit hook assets (`.pre-commit-hooks.yaml`, script)
+6. M6 Public Proof Assets: implemented baseline.
+   - Benchmark corpus with fixed expected certificate IDs
+   - Incident examples in `docs/incidents/`
+   - Migration guides in `docs/migrations/`

@@ -29,6 +29,8 @@ class PolicyCompileTests(unittest.TestCase):
         self.assertEqual(compiled.policy_set_id, "org.baseline.cloud-security.exceptions")
         self.assertEqual(len(compiled.exceptions), 1)
         self.assertEqual(compiled.exceptions[0].rule_id, "TF001")
+        self.assertEqual(compiled.exceptions[0].approved_by, "ciso@formalcloud.dev")
+        self.assertEqual(compiled.exception_policy.get("max_ttl_days"), 30000)
 
 
 if __name__ == "__main__":

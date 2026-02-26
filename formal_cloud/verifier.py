@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import fnmatch
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from . import kubernetes, terraform
@@ -54,6 +54,7 @@ def verify_terraform(
         raise ValueError("no terraform rules found in policy set")
 
     subject_digest = sha256_obj(normalized_plan)
+    terraform_confidence = _analyze_terraform_confidence(resource_changes)
     if trace:
         trace.event(
             "verify.terraform.start",
@@ -61,6 +62,7 @@ def verify_terraform(
                 "workspace": workspace,
                 "resource_change_count": len(resource_changes),
                 "subject_digest": subject_digest,
+                "confidence_class": terraform_confidence["class"],
             },
         )
 
@@ -120,8 +122,11 @@ def verify_terraform(
         subject_metadata={
             "workspace": workspace,
             "resource_change_count": len(resource_changes),
+            "analysis": terraform_confidence,
         },
         results=results,
+        evaluation_time=evaluation_time,
+        confidence=terraform_confidence,
     )
 
 
@@ -136,12 +141,17 @@ def verify_kubernetes(
         raise ValueError("no kubernetes rules found in policy set")
 
     subject_digest = sha256_obj(normalized_manifests)
+    confidence = {
+        "class": "proven",
+        "reasons": ["deterministic manifest evaluation"],
+    }
     if trace:
         trace.event(
             "verify.kubernetes.start",
             {
                 "resource_count": len(resources),
                 "subject_digest": subject_digest,
+                "confidence_class": confidence["class"],
             },
         )
 
@@ -197,6 +207,8 @@ def verify_kubernetes(
         subject_digest=subject_digest,
         subject_metadata={"resource_count": len(resources)},
         results=results,
+        evaluation_time=evaluation_time,
+        confidence=confidence,
     )
 
 
@@ -258,6 +270,8 @@ def _build_certificate(
     subject_digest: str,
     subject_metadata: dict[str, Any],
     results: list[RuleResult],
+    evaluation_time: datetime,
+    confidence: dict[str, Any],
 ) -> dict[str, Any]:
     sorted_results = sorted(results, key=lambda item: item.rule_id)
     result_dicts = [result.to_dict() for result in sorted_results]
@@ -273,6 +287,8 @@ def _build_certificate(
         "total_waived_violations": sum(
             len(result.waived_violations) for result in sorted_results
         ),
+        "confidence_class": confidence.get("class"),
+        "exception_debt": _exception_debt_metrics(compiled.exceptions, evaluation_time),
     }
 
     certificate_id = compute_certificate_id(
@@ -290,11 +306,13 @@ def _build_certificate(
         "generated_at": utc_now_iso(),
         "target": target,
         "decision": decision,
+        "confidence": confidence,
         "policy": {
             "schema_version": compiled.schema_version,
             "policy_set_id": compiled.policy_set_id,
             "policy_revision": compiled.policy_revision,
             "compatibility": compiled.compatibility,
+            "exception_policy": compiled.exception_policy,
             "version": compiled.version,
             "policy_digest": compiled.digest,
             "exception_count": len(compiled.exceptions),
@@ -368,3 +386,79 @@ def _parse_utc_datetime(value: str) -> datetime:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _exception_debt_metrics(
+    exceptions: tuple[PolicyException, ...], evaluation_time: datetime
+) -> dict[str, Any]:
+    metrics = {
+        "total": len(exceptions),
+        "active": 0,
+        "expired": 0,
+        "expiring_within_7d": 0,
+    }
+
+    for exception in exceptions:
+        expiry = _parse_utc_datetime(exception.expires_at)
+        if expiry <= evaluation_time:
+            metrics["expired"] += 1
+            continue
+
+        metrics["active"] += 1
+        if expiry <= evaluation_time + timedelta(days=7):
+            metrics["expiring_within_7d"] += 1
+
+    return metrics
+
+
+def _analyze_terraform_confidence(resource_changes: list[dict[str, Any]]) -> dict[str, Any]:
+    unknown_resources: list[str] = []
+    replace_resources: list[str] = []
+    module_resources: list[str] = []
+
+    for resource in resource_changes:
+        address = str(resource.get("address", ""))
+        actions = set(resource.get("actions") or [])
+        after_unknown = resource.get("after_unknown")
+
+        if "module." in address:
+            module_resources.append(address)
+        if "delete" in actions and "create" in actions:
+            replace_resources.append(address)
+        if _contains_unknown(after_unknown):
+            unknown_resources.append(address)
+
+    if unknown_resources:
+        confidence_class = "unknown"
+        reasons = ["plan contains unresolved unknown values"]
+    elif replace_resources or module_resources:
+        confidence_class = "assumed"
+        reasons = []
+        if replace_resources:
+            reasons.append("plan contains replace operations")
+        if module_resources:
+            reasons.append("plan includes module-scoped resources")
+    else:
+        confidence_class = "proven"
+        reasons = ["all evaluated fields are concrete in plan JSON"]
+
+    return {
+        "class": confidence_class,
+        "reasons": reasons,
+        "unknown_resource_count": len(unknown_resources),
+        "replace_resource_count": len(replace_resources),
+        "module_resource_count": len(module_resources),
+        "unknown_resources": sorted(unknown_resources),
+        "replace_resources": sorted(replace_resources),
+        "module_resources": sorted(module_resources),
+    }
+
+
+def _contains_unknown(value: Any) -> bool:
+    if value is True:
+        return True
+    if isinstance(value, dict):
+        return any(_contains_unknown(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_unknown(item) for item in value)
+    return False

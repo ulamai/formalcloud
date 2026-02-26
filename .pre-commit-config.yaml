@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: formalcloud-k8s-changed
+        name: FormalCloud Kubernetes changed-files gate
+        entry: scripts/precommit-formalcloud-k8s.sh
+        language: system
+        pass_filenames: true
+        files: \.(ya?ml|json)$

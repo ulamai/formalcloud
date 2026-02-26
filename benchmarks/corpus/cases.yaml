@@ -6,6 +6,7 @@ cases:
     plan: ../../examples/terraform-plan.json
     workspace: prod
     expected_decision: reject
+    expected_certificate_id: 0c7e4b1fab4c5097373392cf6e14eadfe5d436bf408f389d9214273f72507059
 
   - id: terraform_accept_prod_secure
     target: terraform
@@ -13,6 +14,7 @@ cases:
     plan: terraform-plan-secure.json
     workspace: prod
     expected_decision: accept
+    expected_certificate_id: aa93fdc39339625e74c2e033e0851f9c1ca61d158fc7422f8d357562725c0516
 
   - id: kubernetes_reject_insecure
     target: kubernetes
@@ -20,6 +22,7 @@ cases:
     manifests:
       - ../../examples/k8s-manifest.yaml
     expected_decision: reject
+    expected_certificate_id: cd35cee8c53b1382cbf6c569a2544478113e3370bd0ab754f8ef2be41400bf50
 
   - id: kubernetes_accept_secure
     target: kubernetes
@@ -27,3 +30,4 @@ cases:
     manifests:
       - k8s-manifest-secure.yaml
     expected_decision: accept
+    expected_certificate_id: fecfac4764d3bca55be6f5e1fb364682005f469b1da5ca901e905adcebeb4f22

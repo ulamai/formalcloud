@@ -9,8 +9,14 @@ from .admission import run_admission_webhook_compiled
 from .attestation import load_signing_key, sign_certificate, verify_certificate_offline
 from .benchmark import run_benchmark
 from .bundle import create_policy_bundle, load_compiled_policy_from_bundle, verify_policy_bundle
+from .evidence_pack import create_evidence_pack
+from .github_checks import certificate_to_github_checks
+from .intoto import certificate_to_intoto_statement
+from .ir_diff import diff_compiled_policies
+from .junit import certificate_to_junit_xml
 from .kubernetes import load_and_normalize_manifests
 from .policy import compile_policy_file
+from .replay import replay_check
 from .sarif import certificate_to_sarif
 from .terraform import normalize_plan
 from .trace import TraceLogger
@@ -34,6 +40,18 @@ def build_parser() -> argparse.ArgumentParser:
     compile_parser.add_argument("--out", required=True, help="output file for compiled policy JSON")
     compile_parser.add_argument("--trace", help="optional trace log output (jsonl)")
 
+    policy_parser = subparsers.add_parser("policy", help="policy utilities")
+    policy_subparsers = policy_parser.add_subparsers(dest="policy_command", required=True)
+    policy_diff = policy_subparsers.add_parser("diff", help="diff compiled policy semantics")
+    policy_diff.add_argument("--left", required=True, help="left policy source")
+    policy_diff.add_argument("--right", required=True, help="right policy source")
+    policy_diff.add_argument("--out", required=True, help="diff output JSON")
+    policy_diff.add_argument(
+        "--fail-on-diff",
+        action="store_true",
+        help="exit non-zero if rules or exceptions differ",
+    )
+
     verify_parser = subparsers.add_parser("verify", help="run deterministic policy verification")
     verify_subparsers = verify_parser.add_subparsers(dest="target", required=True)
 
@@ -51,13 +69,44 @@ def build_parser() -> argparse.ArgumentParser:
     k8s_parser.add_argument(
         "--manifest",
         action="append",
-        required=True,
         help="path to YAML manifest (repeat flag for multiple files)",
+    )
+    k8s_parser.add_argument("--manifest-dir", help="manifest root used with --changed-files-file")
+    k8s_parser.add_argument(
+        "--changed-files-file",
+        help="newline-separated changed files list for fast-path verification",
     )
     k8s_parser.add_argument("--out", required=True, help="certificate/evidence output JSON")
     k8s_parser.add_argument("--trace", help="optional trace log output (jsonl)")
     k8s_parser.add_argument("--signing-key-file", help="optional HMAC key file to sign certificate")
     k8s_parser.add_argument("--signing-key-id", default="local", help="key identifier for signature")
+
+    replay_parser = subparsers.add_parser(
+        "replay", help="replay verification and assert deterministic certificate IDs"
+    )
+    replay_subparsers = replay_parser.add_subparsers(dest="replay_target", required=True)
+
+    replay_tf = replay_subparsers.add_parser("terraform", help="replay Terraform certificate")
+    _add_policy_source_args(replay_tf)
+    replay_tf.add_argument("--plan", required=True, help="terraform show -json plan file")
+    replay_tf.add_argument("--workspace", default="default", help="Terraform workspace")
+    replay_tf.add_argument("--expected-certificate", required=True, help="expected certificate JSON")
+    replay_tf.add_argument("--out", help="optional replay report JSON")
+
+    replay_k8s = replay_subparsers.add_parser("kubernetes", help="replay Kubernetes certificate")
+    _add_policy_source_args(replay_k8s)
+    replay_k8s.add_argument(
+        "--manifest",
+        action="append",
+        help="path to YAML manifest (repeat flag for multiple files)",
+    )
+    replay_k8s.add_argument("--manifest-dir", help="manifest root used with --changed-files-file")
+    replay_k8s.add_argument(
+        "--changed-files-file",
+        help="newline-separated changed files list for fast-path verification",
+    )
+    replay_k8s.add_argument("--expected-certificate", required=True, help="expected certificate JSON")
+    replay_k8s.add_argument("--out", help="optional replay report JSON")
 
     attest_parser = subparsers.add_parser(
         "attest", help="sign or verify certificate artifacts offline"
@@ -125,6 +174,45 @@ def build_parser() -> argparse.ArgumentParser:
         help="include waived violations as suppressed SARIF results",
     )
 
+    export_junit = export_subparsers.add_parser("junit", help="export JUnit XML")
+    export_junit.add_argument("--certificate", required=True, help="certificate JSON")
+    export_junit.add_argument("--out", required=True, help="output JUnit XML file")
+    export_junit.add_argument(
+        "--include-waived",
+        action="store_true",
+        help="include waived violations as skipped testcases",
+    )
+
+    export_checks = export_subparsers.add_parser(
+        "github-checks", help="export GitHub Checks payload JSON"
+    )
+    export_checks.add_argument("--certificate", required=True, help="certificate JSON")
+    export_checks.add_argument("--out", required=True, help="output JSON")
+
+    export_intoto = export_subparsers.add_parser(
+        "intoto", help="export in-toto statement JSON"
+    )
+    export_intoto.add_argument("--certificate", required=True, help="certificate JSON")
+    export_intoto.add_argument("--out", required=True, help="output statement JSON")
+    export_intoto.add_argument(
+        "--predicate-type",
+        default="https://formalcloud.dev/attestation/policy-decision/v1",
+        help="in-toto predicateType value",
+    )
+
+    export_pack = export_subparsers.add_parser(
+        "evidence-pack", help="export audit-ready evidence pack directory"
+    )
+    export_pack.add_argument("--certificate", required=True, help="certificate JSON")
+    export_pack.add_argument("--out-dir", required=True, help="output directory")
+    export_pack.add_argument("--trace", help="trace JSONL path")
+    export_pack.add_argument("--bundle-report", help="bundle verification report JSON")
+    export_pack.add_argument(
+        "--extra-file",
+        action="append",
+        help="extra file to include in evidence pack (repeat)",
+    )
+
     benchmark_parser = subparsers.add_parser(
         "benchmark", help="run deterministic reproducibility benchmark corpus"
     )
@@ -183,6 +271,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"compiled {len(compiled.rules)} rules to {args.out}")
             return 0
 
+        if args.command == "policy" and args.policy_command == "diff":
+            left = compile_policy_file(Path(args.left), trace)
+            right = compile_policy_file(Path(args.right), trace)
+            report = diff_compiled_policies(left, right)
+            write_json(Path(args.out), report)
+            has_diff = bool(
+                report["rules"]["added"]
+                or report["rules"]["removed"]
+                or report["rules"]["changed"]
+                or report["exceptions"]["added"]
+                or report["exceptions"]["removed"]
+                or report["exceptions"]["changed"]
+            )
+            print(f"policy diff compatible={report['compatible']} has_diff={has_diff}")
+            return 8 if args.fail_on_diff and has_diff else 0
+
         if args.command == "verify" and args.target == "terraform":
             compiled = _load_compiled_policy(args, trace)
             plan = load_json(Path(args.plan))
@@ -217,10 +321,11 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "verify" and args.target == "kubernetes":
             compiled = _load_compiled_policy(args, trace)
-            manifests = load_and_normalize_manifests([Path(path) for path in args.manifest])
+            manifests = _resolve_kubernetes_manifests(args)
+            normalized = load_and_normalize_manifests(manifests)
             certificate = verify_kubernetes(
                 compiled=compiled,
-                normalized_manifests=manifests,
+                normalized_manifests=normalized,
                 trace=trace,
             )
             if trace_path:
@@ -234,6 +339,7 @@ def main(argv: list[str] | None = None) -> int:
                     "decision": certificate["decision"],
                     "certificate_id": certificate["certificate_id"],
                     "signed": "signature" in certificate,
+                    "manifest_count": len(manifests),
                     "output": str(args.out),
                 },
             )
@@ -244,6 +350,45 @@ def main(argv: list[str] | None = None) -> int:
                 f"certificate={certificate['certificate_id']}"
             )
             return 0 if certificate["decision"] == "accept" else 3
+
+        if args.command == "replay" and args.replay_target == "terraform":
+            compiled = _load_compiled_policy(args, trace)
+            plan = load_json(Path(args.plan))
+            normalized_plan = normalize_plan(plan)
+            replayed = verify_terraform(
+                compiled=compiled,
+                normalized_plan=normalized_plan,
+                workspace=args.workspace,
+                trace=trace,
+            )
+            expected = load_json(Path(args.expected_certificate))
+            report = replay_check(expected_certificate=expected, replayed_certificate=replayed)
+            if args.out:
+                write_json(Path(args.out), report)
+            print(
+                f"replay valid={report['valid']} expected={report['expected_certificate_id']} "
+                f"actual={report['replayed_certificate_id']}"
+            )
+            return 0 if report["valid"] else 7
+
+        if args.command == "replay" and args.replay_target == "kubernetes":
+            compiled = _load_compiled_policy(args, trace)
+            manifests = _resolve_kubernetes_manifests(args)
+            normalized = load_and_normalize_manifests(manifests)
+            replayed = verify_kubernetes(
+                compiled=compiled,
+                normalized_manifests=normalized,
+                trace=trace,
+            )
+            expected = load_json(Path(args.expected_certificate))
+            report = replay_check(expected_certificate=expected, replayed_certificate=replayed)
+            if args.out:
+                write_json(Path(args.out), report)
+            print(
+                f"replay valid={report['valid']} expected={report['expected_certificate_id']} "
+                f"actual={report['replayed_certificate_id']}"
+            )
+            return 0 if report["valid"] else 7
 
         if args.command == "attest" and args.attest_command == "sign":
             certificate = load_json(Path(args.certificate))
@@ -316,6 +461,49 @@ def main(argv: list[str] | None = None) -> int:
             print(f"sarif exported results={result_count} output={args.out}")
             return 0
 
+        if args.command == "export" and args.export_target == "junit":
+            certificate = load_json(Path(args.certificate))
+            junit_xml = certificate_to_junit_xml(
+                certificate=certificate,
+                include_waived=args.include_waived,
+            )
+            Path(args.out).write_text(junit_xml, encoding="utf-8")
+            print(f"junit exported output={args.out}")
+            return 0
+
+        if args.command == "export" and args.export_target == "github-checks":
+            certificate = load_json(Path(args.certificate))
+            payload = certificate_to_github_checks(certificate)
+            write_json(Path(args.out), payload)
+            annotation_count = len(payload.get("output", {}).get("annotations", []))
+            print(f"github-checks exported annotations={annotation_count} output={args.out}")
+            return 0
+
+        if args.command == "export" and args.export_target == "intoto":
+            certificate = load_json(Path(args.certificate))
+            statement = certificate_to_intoto_statement(
+                certificate=certificate,
+                predicate_type=args.predicate_type,
+            )
+            write_json(Path(args.out), statement)
+            print(f"intoto exported output={args.out}")
+            return 0
+
+        if args.command == "export" and args.export_target == "evidence-pack":
+            extra_files = [Path(path) for path in (args.extra_file or [])]
+            manifest = create_evidence_pack(
+                certificate_path=Path(args.certificate),
+                out_dir=Path(args.out_dir),
+                trace_path=Path(args.trace) if args.trace else None,
+                bundle_report_path=Path(args.bundle_report) if args.bundle_report else None,
+                extra_files=extra_files,
+            )
+            print(
+                f"evidence-pack exported files={len(manifest['files'])} "
+                f"output={Path(args.out_dir) / 'manifest.json'}"
+            )
+            return 0
+
         if args.command == "benchmark" and args.benchmark_command == "run":
             report = run_benchmark(Path(args.cases), iterations=args.iterations)
             write_json(Path(args.out), report)
@@ -364,6 +552,76 @@ def _load_compiled_policy(args: argparse.Namespace, trace: TraceLogger):
         require_signature=bool(getattr(args, "bundle_require_signature", False)),
         trace=trace,
     )
+
+
+def _resolve_kubernetes_manifests(args: argparse.Namespace) -> list[Path]:
+    explicit_manifests = [Path(path) for path in (getattr(args, "manifest", None) or [])]
+    changed_files = _load_changed_files(getattr(args, "changed_files_file", None))
+    changed_set = {
+        path.resolve()
+        for path in changed_files
+        if path.exists() and path.is_file()
+    }
+
+    if changed_set and explicit_manifests:
+        explicit_manifests = [
+            manifest
+            for manifest in explicit_manifests
+            if manifest.resolve() in changed_set
+        ]
+
+    manifest_dir = getattr(args, "manifest_dir", None)
+    if manifest_dir and changed_set:
+        root = Path(manifest_dir).resolve()
+        for changed in changed_set:
+            if _is_yaml_like(changed) and _is_within(root, changed):
+                explicit_manifests.append(changed)
+
+    deduped: list[Path] = []
+    seen: set[Path] = set()
+    for manifest in explicit_manifests:
+        resolved = manifest.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        deduped.append(resolved)
+
+    if not deduped and not changed_set:
+        raise ValueError(
+            "no Kubernetes manifests selected; provide --manifest or --changed-files-file"
+        )
+
+    return deduped
+
+
+def _load_changed_files(changed_files_file: str | None) -> list[Path]:
+    if not changed_files_file:
+        return []
+
+    path = Path(changed_files_file)
+    if not path.exists():
+        raise ValueError(f"changed files list does not exist: {changed_files_file}")
+
+    changed: list[Path] = []
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        changed.append(Path(line))
+    return changed
+
+
+def _is_yaml_like(path: Path) -> bool:
+    suffix = path.suffix.lower()
+    return suffix in {".yaml", ".yml", ".json"}
+
+
+def _is_within(root: Path, path: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
 
 
 def _maybe_sign_certificate(

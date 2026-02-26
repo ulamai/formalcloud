@@ -57,6 +57,7 @@ class CompiledPolicySet:
     policy_set_id: str
     policy_revision: str
     compatibility: dict[str, Any]
+    exception_policy: dict[str, Any]
     version: int
     rules: tuple[PolicyRule, ...]
     exceptions: tuple[PolicyException, ...]
@@ -68,6 +69,7 @@ class CompiledPolicySet:
             "policy_set_id": self.policy_set_id,
             "policy_revision": self.policy_revision,
             "compatibility": self.compatibility,
+            "exception_policy": self.exception_policy,
             "version": self.version,
             "policy_digest": self.digest,
             "rules": [rule.to_dict() for rule in self.rules],

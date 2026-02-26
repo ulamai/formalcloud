@@ -5,6 +5,9 @@ policy:
   revision: 1.0.0
   compatibility:
     min_engine_version: 0.1.0
+  exception_policy:
+    max_ttl_days: 30000
+    required_approver_regex: '^[^@]+@formalcloud\.dev$'
 rules:
   - id: TF001
     title: No public S3 buckets
