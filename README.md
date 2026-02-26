@@ -1,8 +1,8 @@
-# formal-cloud
+# FormalCloud
 
-`formal-cloud` is an MVP proof-carrying policy gate for cloud infrastructure changes.
+FormalCloud is an open-source formal compliance engine for cloud infrastructure and policy-as-code workflows. It evaluates Terraform plans and Kubernetes manifests with deterministic rule semantics, then produces machine-checkable certificates that explain why a change was accepted or rejected.
 
-It compiles typed policy rules, evaluates Terraform plan JSON and Kubernetes manifests with deterministic checkers, and emits certificate-style evidence artifacts plus trace logs for audit use.
+Instead of relying on periodic scanner snapshots, FormalCloud is designed for per-change enforcement in CI/CD and admission pipelines. Every decision is reproducible, traceable, and attestable, so teams can ship faster while preserving high-assurance evidence for security reviews, audits, and incident investigations.
 
 ## Why this exists
 
