@@ -88,6 +88,8 @@ def compile_policy_document(
         check = raw_rule.get("check")
         severity = raw_rule.get("severity", "medium")
         params = raw_rule.get("params") or {}
+        guideline_url = _read_rule_guideline_url(raw_rule, source=source, rule_id=rule_id)
+        controls = _read_rule_controls(raw_rule, source=source, rule_id=rule_id)
 
         if not isinstance(rule_id, str) or not rule_id.strip():
             raise ValueError(f"rule id must be a non-empty string in {source}")
@@ -117,6 +119,8 @@ def compile_policy_document(
                 check=check,
                 severity=severity,
                 params=params,
+                guideline_url=guideline_url,
+                controls=controls,
             )
         )
 
@@ -277,6 +281,42 @@ def _normalize_compatibility(compatibility: dict[str, Any], source: str) -> dict
         normalized[key] = value
 
     return normalized
+
+
+def _read_rule_guideline_url(raw_rule: dict[str, Any], source: str, rule_id: Any) -> str | None:
+    guideline_url = raw_rule.get("guideline_url")
+    guideline_alias = raw_rule.get("guideline")
+    if guideline_url is not None and guideline_alias is not None and guideline_url != guideline_alias:
+        raise ValueError(
+            f"rule '{rule_id}' in {source} has conflicting guideline_url and guideline values"
+        )
+    value = guideline_url if guideline_url is not None else guideline_alias
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"guideline_url for rule '{rule_id}' must be a non-empty string")
+    return value
+
+
+def _read_rule_controls(raw_rule: dict[str, Any], source: str, rule_id: Any) -> tuple[str, ...]:
+    controls = raw_rule.get("controls")
+    if controls is None:
+        return ()
+    if not isinstance(controls, list):
+        raise ValueError(f"controls for rule '{rule_id}' in {source} must be a list")
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in controls:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(
+                f"every controls entry for rule '{rule_id}' in {source} must be a non-empty string"
+            )
+        if item in seen:
+            continue
+        seen.add(item)
+        normalized.append(item)
+    return tuple(sorted(normalized))
 
 
 def _compile_exceptions(

@@ -23,8 +23,14 @@ def certificate_to_sarif(
     for rule_result in certificate.get("results") or []:
         rule_id = str(rule_result.get("id", "UNKNOWN"))
         severity = str(rule_result.get("severity", "medium"))
+        guideline_url = rule_result.get("guideline_url")
+        controls = [
+            str(control_id)
+            for control_id in (rule_result.get("controls") or [])
+            if isinstance(control_id, str)
+        ]
 
-        rules[rule_id] = {
+        rule_entry: dict[str, Any] = {
             "id": rule_id,
             "name": str(rule_result.get("title", rule_id)),
             "shortDescription": {"text": str(rule_result.get("title", rule_id))},
@@ -38,8 +44,14 @@ def certificate_to_sarif(
                 "severity": severity,
                 "target": rule_result.get("target"),
                 "check": rule_result.get("check"),
+                "controls": controls,
             },
         }
+        if isinstance(guideline_url, str) and guideline_url:
+            rule_entry["helpUri"] = guideline_url
+        if controls:
+            rule_entry["properties"]["tags"] = controls
+        rules[rule_id] = rule_entry
 
         for violation in rule_result.get("violations") or []:
             results.append(

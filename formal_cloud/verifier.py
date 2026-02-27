@@ -280,6 +280,8 @@ def _build_rule_result(
         target=rule.target,
         check=rule.check,
         severity=rule.severity,
+        guideline_url=rule.guideline_url,
+        controls=rule.controls,
         passed=len(sorted_violations) == 0,
         evaluated_entities=evaluated_entities,
         violations=sorted_violations,
@@ -315,6 +317,7 @@ def _build_certificate(
         ),
         "confidence_class": confidence.get("class"),
         "exception_debt": _exception_debt_metrics(compiled.exceptions, evaluation_time),
+        "control_coverage": _control_coverage_summary(sorted_results),
     }
 
     certificate_id = compute_certificate_id(
@@ -435,6 +438,47 @@ def _exception_debt_metrics(
             metrics["expiring_within_7d"] += 1
 
     return metrics
+
+
+def _control_coverage_summary(results: list[RuleResult]) -> dict[str, Any]:
+    by_control: dict[str, dict[str, Any]] = {}
+
+    for result in results:
+        if not result.controls:
+            continue
+        for control_id in result.controls:
+            current = by_control.get(control_id)
+            if current is None:
+                current = {
+                    "id": control_id,
+                    "rules": [],
+                    "passed_rules": 0,
+                    "failed_rules": 0,
+                    "violations": 0,
+                    "waived_violations": 0,
+                }
+                by_control[control_id] = current
+
+            current["rules"].append(result.rule_id)
+            if result.passed:
+                current["passed_rules"] += 1
+            else:
+                current["failed_rules"] += 1
+            current["violations"] += len(result.violations)
+            current["waived_violations"] += len(result.waived_violations)
+
+    controls: list[dict[str, Any]] = []
+    for control_id in sorted(by_control):
+        current = by_control[control_id]
+        current["rules"] = sorted(set(current["rules"]))
+        current["status"] = "pass" if current["failed_rules"] == 0 else "fail"
+        controls.append(current)
+
+    return {
+        "mapped_controls": len(controls),
+        "failing_controls": sum(1 for control in controls if control["status"] == "fail"),
+        "controls": controls,
+    }
 
 
 def _analyze_terraform_confidence(resource_changes: list[dict[str, Any]]) -> dict[str, Any]:

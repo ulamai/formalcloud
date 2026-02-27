@@ -39,9 +39,11 @@ class PolicyRule:
     check: str
     severity: str
     params: dict[str, Any]
+    guideline_url: str | None = None
+    controls: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        value: dict[str, Any] = {
             "id": self.rule_id,
             "title": self.title,
             "target": self.target,
@@ -49,6 +51,11 @@ class PolicyRule:
             "severity": self.severity,
             "params": self.params,
         }
+        if self.guideline_url:
+            value["guideline_url"] = self.guideline_url
+        if self.controls:
+            value["controls"] = list(self.controls)
+        return value
 
 
 @dataclass(frozen=True)
@@ -98,6 +105,8 @@ class RuleResult:
     target: str
     check: str
     severity: str
+    guideline_url: str | None
+    controls: tuple[str, ...]
     passed: bool
     evaluated_entities: int
     violations: tuple[RuleViolation, ...]
@@ -106,7 +115,7 @@ class RuleResult:
     proof: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        value: dict[str, Any] = {
             "id": self.rule_id,
             "title": self.title,
             "target": self.target,
@@ -119,3 +128,8 @@ class RuleResult:
             "applied_exceptions": list(self.applied_exceptions),
             "proof": self.proof,
         }
+        if self.guideline_url:
+            value["guideline_url"] = self.guideline_url
+        if self.controls:
+            value["controls"] = list(self.controls)
+        return value

@@ -1,0 +1,28 @@
+schema_version: formal-cloud.policy/v1
+policy:
+  id: org.controls.audit
+  version: 1
+  revision: 1.0.0
+  compatibility:
+    min_engine_version: 0.1.0
+rules:
+  - id: TF001
+    title: No public S3 buckets
+    target: terraform
+    check: no_public_s3
+    severity: critical
+    guideline_url: https://example.com/guides/no-public-s3
+    controls:
+      - SOC2-CC6.1
+      - NIST-AC-3
+
+  - id: TF003
+    title: No destructive changes in protected workspaces
+    target: terraform
+    check: no_destructive_changes
+    severity: high
+    params:
+      protected_workspaces:
+        - prod
+    controls:
+      - SOC2-CC7.2

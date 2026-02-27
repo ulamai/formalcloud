@@ -20,6 +20,7 @@ This project is built around three goals:
 - Policy compilation:
   - Stable policy schema: `formal-cloud.policy/v1`.
   - Typed rule schema (target + check + severity + params).
+  - Optional control metadata per rule (`controls`, `guideline_url`) for audit mapping.
   - Legacy policy migration (`legacy/v0` -> `formal-cloud.policy/v1`).
   - Rego subset adapter (`formal-cloud.rego-subset/v1`).
   - Kyverno validate-subset adapter (`formal-cloud.kyverno-subset/v1`).
@@ -105,6 +106,10 @@ rules:
     target: terraform
     check: no_public_s3
     severity: critical
+    guideline_url: https://example.com/guides/tf001
+    controls:
+      - SOC2-CC6.1
+      - NIST-AC-3
 ```
 
 Backward compatibility:
@@ -168,6 +173,18 @@ formal-cloud verify terraform \
   --workspace prod \
   --out out/terraform-certificate.json \
   --trace out/terraform-trace.jsonl
+```
+
+Certificate summary includes control-level coverage when rules define `controls` metadata.
+
+Control-mapped verification example:
+
+```bash
+formal-cloud verify terraform \
+  --policies examples/policies-controls.yaml \
+  --plan examples/terraform-plan.json \
+  --workspace prod \
+  --out out/terraform-certificate-controls.json
 ```
 
 Pilot Terraform profile (15 controls):

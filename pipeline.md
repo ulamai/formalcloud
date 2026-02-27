@@ -58,6 +58,34 @@
 - Certificates include policy schema + metadata.
 - Test suite passes for both new and legacy policy inputs.
 
+## Real Use-Case Adoption Track
+
+This track translates field demand (security/platform teams + auditors) into product requirements that unblock real rollout.
+
+1. Audit-native control mapping and evidence:
+   - Rule metadata: `controls` + `guideline_url`.
+   - Certificate summary by control (`pass` / `fail`, mapped rules, violation counts).
+   - SARIF propagation for code-scanning UX.
+2. Noise management and trust:
+   - Rule tuning packs by environment/profile.
+   - Explicit confidence handling (`proven` / `assumed` / `unknown`) with CI policy knobs.
+3. Policy lifecycle operations:
+   - Policy test fixtures and golden outputs.
+   - Staged rollout (`audit` -> `enforce`) with drift indicators.
+4. Auditor-ready evidence continuity:
+   - Immutable evidence-pack manifests.
+   - Control-oriented views for SOC2/ISO internal control owners.
+
+### Adoption Track Status
+
+1. Audit-native control mapping and evidence: implemented baseline in this branch.
+   - Compiler accepts `controls` and `guideline_url`.
+   - Verifier emits `summary.control_coverage`.
+   - SARIF exporter includes control tags and guideline links.
+2. Noise management and trust: partial (confidence model already implemented).
+3. Policy lifecycle operations: pending.
+4. Auditor-ready evidence continuity: partial (evidence-pack exists; control views pending).
+
 ## Ecosystem Aggregation Strategy
 
 ### What to adopt from OPA
