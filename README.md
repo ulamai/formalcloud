@@ -467,8 +467,10 @@ pre-commit run --all-files
 ## Additional docs
 
 - Compatibility matrix: `docs/compatibility-matrix.md`
+- Admission production guide: `docs/admission-production.md`
 - Benchmark regression mode: `docs/benchmarks/regression-mode.md`
 - Deterministic replay: `docs/replay-determinism.md`
+- Support and upgrades policy: `docs/support-upgrades.md`
 - Incident examples:
   - `docs/incidents/public-s3-migration.md`
   - `docs/incidents/k8s-privileged-workload.md`
