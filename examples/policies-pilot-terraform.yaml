@@ -1,0 +1,110 @@
+schema_version: formal-cloud.policy/v1
+policy:
+  id: org.formalcloud.pilot.terraform
+  version: 1
+  revision: 0.1.2-pilot
+  compatibility:
+    min_engine_version: 0.1.2
+rules:
+  - id: TF001
+    title: No public S3 buckets
+    target: terraform
+    check: no_public_s3
+    severity: critical
+
+  - id: TF002
+    title: Encryption required for S3, RDS, and EBS
+    target: terraform
+    check: require_encryption
+    severity: high
+    params:
+      resource_types:
+        - aws_s3_bucket
+        - aws_db_instance
+        - aws_ebs_volume
+
+  - id: TF003
+    title: No destructive changes in protected workspaces
+    target: terraform
+    check: no_destructive_changes
+    severity: high
+    params:
+      protected_workspaces:
+        - prod
+        - production
+
+  - id: TF004
+    title: Disallow wide CIDR ingress
+    target: terraform
+    check: disallow_wide_cidr_ingress
+    severity: critical
+
+  - id: TF005
+    title: Disallow wide CIDR egress
+    target: terraform
+    check: disallow_wide_cidr_egress
+    severity: high
+
+  - id: TF006
+    title: Disallow SSH from the internet
+    target: terraform
+    check: disallow_ssh_from_internet
+    severity: critical
+
+  - id: TF007
+    title: Disallow RDP from the internet
+    target: terraform
+    check: disallow_rdp_from_internet
+    severity: critical
+
+  - id: TF008
+    title: Require S3 versioning
+    target: terraform
+    check: require_s3_versioning
+    severity: high
+
+  - id: TF009
+    title: Require S3 access logging
+    target: terraform
+    check: require_s3_bucket_logging
+    severity: medium
+
+  - id: TF010
+    title: Require RDS backup retention
+    target: terraform
+    check: require_rds_backup_retention
+    severity: high
+    params:
+      min_days: 7
+
+  - id: TF011
+    title: Require RDS multi-AZ
+    target: terraform
+    check: require_rds_multi_az
+    severity: high
+
+  - id: TF012
+    title: Require RDS deletion protection
+    target: terraform
+    check: require_rds_deletion_protection
+    severity: high
+
+  - id: TF013
+    title: Require IMDSv2
+    target: terraform
+    check: require_imdsv2
+    severity: high
+
+  - id: TF014
+    title: Require KMS key rotation
+    target: terraform
+    check: require_kms_key_rotation
+    severity: medium
+
+  - id: TF015
+    title: Require CloudWatch log retention
+    target: terraform
+    check: require_log_retention_min_days
+    severity: medium
+    params:
+      min_days: 30

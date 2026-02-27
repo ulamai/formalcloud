@@ -54,6 +54,18 @@ Terraform:
 - `no_public_s3`
 - `require_encryption`
 - `no_destructive_changes`
+- `disallow_wide_cidr_ingress`
+- `disallow_wide_cidr_egress`
+- `disallow_ssh_from_internet`
+- `disallow_rdp_from_internet`
+- `require_s3_versioning`
+- `require_s3_bucket_logging`
+- `require_rds_backup_retention`
+- `require_rds_multi_az`
+- `require_rds_deletion_protection`
+- `require_imdsv2`
+- `require_kms_key_rotation`
+- `require_log_retention_min_days`
 
 Kubernetes:
 
@@ -156,6 +168,17 @@ formal-cloud verify terraform \
   --workspace prod \
   --out out/terraform-certificate.json \
   --trace out/terraform-trace.jsonl
+```
+
+Pilot Terraform profile (15 controls):
+
+```bash
+formal-cloud verify terraform \
+  --policies examples/policies-pilot-terraform.yaml \
+  --plan examples/terraform-plan.json \
+  --workspace prod \
+  --out out/terraform-pilot-certificate.json \
+  --trace out/terraform-pilot-trace.jsonl
 ```
 
 Verify + sign Terraform certificate:

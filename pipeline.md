@@ -175,3 +175,23 @@
    - Benchmark corpus with fixed expected certificate IDs
    - Incident examples in `docs/incidents/`
    - Migration guides in `docs/migrations/`
+
+## Pilot Terraform Control Profile (15)
+
+1. `no_public_s3`
+2. `require_encryption`
+3. `no_destructive_changes`
+4. `disallow_wide_cidr_ingress`
+5. `disallow_wide_cidr_egress`
+6. `disallow_ssh_from_internet`
+7. `disallow_rdp_from_internet`
+8. `require_s3_versioning`
+9. `require_s3_bucket_logging`
+10. `require_rds_backup_retention`
+11. `require_rds_multi_az`
+12. `require_rds_deletion_protection`
+13. `require_imdsv2`
+14. `require_kms_key_rotation`
+15. `require_log_retention_min_days`
+
+Reference policy profile: `examples/policies-pilot-terraform.yaml`.

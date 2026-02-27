@@ -83,6 +83,32 @@ def verify_terraform(
                 workspace=workspace,
                 protected_workspaces=protected_workspaces,
             )
+        elif rule.check == "disallow_wide_cidr_ingress":
+            violations = terraform.check_disallow_wide_cidr_ingress(resource_changes)
+        elif rule.check == "disallow_wide_cidr_egress":
+            violations = terraform.check_disallow_wide_cidr_egress(resource_changes)
+        elif rule.check == "disallow_ssh_from_internet":
+            violations = terraform.check_disallow_ssh_from_internet(resource_changes)
+        elif rule.check == "disallow_rdp_from_internet":
+            violations = terraform.check_disallow_rdp_from_internet(resource_changes)
+        elif rule.check == "require_s3_versioning":
+            violations = terraform.check_require_s3_versioning(resource_changes)
+        elif rule.check == "require_s3_bucket_logging":
+            violations = terraform.check_require_s3_bucket_logging(resource_changes)
+        elif rule.check == "require_rds_backup_retention":
+            violations = terraform.check_require_rds_backup_retention(resource_changes, rule.params)
+        elif rule.check == "require_rds_multi_az":
+            violations = terraform.check_require_rds_multi_az(resource_changes)
+        elif rule.check == "require_rds_deletion_protection":
+            violations = terraform.check_require_rds_deletion_protection(resource_changes)
+        elif rule.check == "require_imdsv2":
+            violations = terraform.check_require_imdsv2(resource_changes)
+        elif rule.check == "require_kms_key_rotation":
+            violations = terraform.check_require_kms_key_rotation(resource_changes)
+        elif rule.check == "require_log_retention_min_days":
+            violations = terraform.check_require_log_retention_min_days(
+                resource_changes, rule.params
+            )
         else:
             raise ValueError(f"unsupported terraform check: {rule.check}")
 
