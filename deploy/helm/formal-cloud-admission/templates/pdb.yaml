@@ -1,0 +1,13 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "formal-cloud-admission.fullname" . }}
+  labels:
+    {{- include "formal-cloud-admission.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "formal-cloud-admission.selectorLabels" . | nindent 6 }}
+{{- end }}

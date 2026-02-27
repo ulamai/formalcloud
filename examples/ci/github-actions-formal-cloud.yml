@@ -1,0 +1,51 @@
+name: formal-cloud-ci-template
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  terraform-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FormalCloud
+        run: |
+          python -m pip install --upgrade pip
+          pip install formal-cloud
+
+      - name: Build plan JSON
+        run: terraform show -json tfplan.binary > tfplan.json
+
+      - name: FormalCloud gate
+        run: |
+          formal-cloud verify terraform \
+            --policies policy/policies.yaml \
+            --plan tfplan.json \
+            --workspace "${{ github.ref_name }}" \
+            --out artifacts/terraform-certificate.json \
+            --trace artifacts/terraform-trace.jsonl
+
+      - name: Export review formats
+        if: always()
+        run: |
+          formal-cloud export sarif \
+            --certificate artifacts/terraform-certificate.json \
+            --out artifacts/terraform.sarif.json
+          formal-cloud export junit \
+            --certificate artifacts/terraform-certificate.json \
+            --out artifacts/terraform.junit.xml
+
+      - name: Upload compliance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formal-cloud-evidence
+          path: artifacts/
+          retention-days: 30

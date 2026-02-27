@@ -1,0 +1,77 @@
+schema_version: formal-cloud.policy/v1
+policy:
+  id: org.formalcloud.pack.nist-800-53.starter
+  version: 1
+  revision: 1.0.0
+  compatibility:
+    min_engine_version: 0.1.0
+rules:
+  - id: TF-NIST-001
+    title: No public S3 buckets
+    target: terraform
+    check: no_public_s3
+    severity: critical
+    controls: [NIST-AC-3]
+
+  - id: TF-NIST-002
+    title: Encrypt data at rest
+    target: terraform
+    check: require_encryption
+    severity: high
+    params:
+      resource_types:
+        - aws_s3_bucket
+        - aws_db_instance
+        - aws_ebs_volume
+    controls: [NIST-SC-13]
+
+  - id: TF-NIST-003
+    title: Restrict wide ingress CIDRs
+    target: terraform
+    check: disallow_wide_cidr_ingress
+    severity: high
+    controls: [NIST-AC-4]
+
+  - id: TF-NIST-004
+    title: Require KMS key rotation
+    target: terraform
+    check: require_kms_key_rotation
+    severity: high
+    controls: [NIST-SC-12]
+
+  - id: TF-NIST-005
+    title: Enforce long-term audit log retention
+    target: terraform
+    check: require_log_retention_min_days
+    severity: medium
+    params:
+      min_days: 365
+    controls: [NIST-AU-11]
+
+  - id: K8S-NIST-001
+    title: Block privileged containers
+    target: kubernetes
+    check: no_privileged_containers
+    severity: critical
+    controls: [NIST-CM-6]
+
+  - id: K8S-NIST-002
+    title: Require non-root workloads
+    target: kubernetes
+    check: require_non_root
+    severity: high
+    controls: [NIST-AC-6]
+
+  - id: K8S-NIST-003
+    title: Disallow mutable image tags
+    target: kubernetes
+    check: disallow_latest_tag
+    severity: medium
+    controls: [NIST-CM-2]
+
+  - id: K8S-NIST-004
+    title: Require resource limits
+    target: kubernetes
+    check: require_resources_limits
+    severity: medium
+    controls: [NIST-SI-7]

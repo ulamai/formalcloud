@@ -89,6 +89,13 @@ pip install -e .
 
 `PyYAML` is optional. If unavailable, the tool falls back to Ruby's built-in Psych parser for YAML.
 
+Container image:
+
+```bash
+docker build -t formalcloud:local .
+docker run --rm formalcloud:local --help
+```
+
 ## Usage
 
 Policy schema example (`formal-cloud.policy/v1`):
@@ -402,6 +409,10 @@ formal-cloud admission-webhook \
 
 The webhook serves `/healthz` and admission POSTs. For production, terminate TLS in front of the service.
 
+Helm chart for production-style admission deployment:
+
+- `deploy/helm/formal-cloud-admission`
+
 Exit codes:
 
 - `0`: verification accepted
@@ -469,7 +480,10 @@ pre-commit run --all-files
 - Compatibility matrix: `docs/compatibility-matrix.md`
 - Admission production guide: `docs/admission-production.md`
 - Benchmark regression mode: `docs/benchmarks/regression-mode.md`
+- CI templates: `docs/ci-templates.md`
 - Deterministic replay: `docs/replay-determinism.md`
+- Release and publish channels: `docs/release-publish.md`
+- Starter policy packs: `docs/policy-packs.md`
 - Support and upgrades policy: `docs/support-upgrades.md`
 - Incident examples:
   - `docs/incidents/public-s3-migration.md`
@@ -483,6 +497,13 @@ pre-commit run --all-files
 ## Security note
 
 `terraform show -json` can contain plaintext sensitive values. Treat plan JSON and generated evidence artifacts as sensitive build artifacts and scope retention/access appropriately.
+
+See also:
+
+1. `SECURITY.md` for vulnerability reporting.
+2. `CONTRIBUTING.md` for contribution workflow.
+3. `CODE_OF_CONDUCT.md` for community standards.
+4. `LICENSE` for project licensing terms.
 
 ## Roadmap (next)
 

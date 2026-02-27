@@ -1,0 +1,49 @@
+pipeline {
+  agent any
+
+  stages {
+    stage('Setup') {
+      steps {
+        sh '''
+          python3 -m pip install --upgrade pip
+          pip3 install formal-cloud
+          mkdir -p artifacts
+        '''
+      }
+    }
+
+    stage('Terraform Plan JSON') {
+      steps {
+        sh 'terraform show -json tfplan.binary > tfplan.json'
+      }
+    }
+
+    stage('FormalCloud Verify') {
+      steps {
+        sh '''
+          formal-cloud verify terraform \
+            --policies policy/policies.yaml \
+            --plan tfplan.json \
+            --workspace "${BRANCH_NAME}" \
+            --out artifacts/terraform-certificate.json \
+            --trace artifacts/terraform-trace.jsonl
+
+          formal-cloud export junit \
+            --certificate artifacts/terraform-certificate.json \
+            --out artifacts/terraform.junit.xml
+
+          formal-cloud export sarif \
+            --certificate artifacts/terraform-certificate.json \
+            --out artifacts/terraform.sarif.json
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      junit testResults: 'artifacts/terraform.junit.xml', allowEmptyResults: true
+      archiveArtifacts artifacts: 'artifacts/**', fingerprint: true, onlyIfSuccessful: false
+    }
+  }
+}

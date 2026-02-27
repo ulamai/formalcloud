@@ -1,0 +1,11 @@
+{{- if not .Values.policy.configMapName }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "formal-cloud-admission.policyConfigMapName" . }}
+  labels:
+    {{- include "formal-cloud-admission.labels" . | nindent 4 }}
+data:
+  {{ .Values.policy.fileName }}: |
+{{ .Values.policy.data | indent 4 }}
+{{- end }}

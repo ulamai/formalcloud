@@ -1,0 +1,84 @@
+schema_version: formal-cloud.policy/v1
+policy:
+  id: org.formalcloud.pack.cis-aws.starter
+  version: 1
+  revision: 1.0.0
+  compatibility:
+    min_engine_version: 0.1.0
+rules:
+  - id: TF-CIS-001
+    title: No public S3 buckets
+    target: terraform
+    check: no_public_s3
+    severity: critical
+    controls: [CIS-AWS-3.1]
+
+  - id: TF-CIS-002
+    title: Encryption enabled for storage services
+    target: terraform
+    check: require_encryption
+    severity: high
+    params:
+      resource_types:
+        - aws_s3_bucket
+        - aws_db_instance
+        - aws_ebs_volume
+    controls: [CIS-AWS-2.1]
+
+  - id: TF-CIS-003
+    title: Enable S3 bucket versioning
+    target: terraform
+    check: require_s3_versioning
+    severity: high
+    controls: [CIS-AWS-3.14]
+
+  - id: TF-CIS-004
+    title: Enable S3 access logging
+    target: terraform
+    check: require_s3_bucket_logging
+    severity: medium
+    controls: [CIS-AWS-3.13]
+
+  - id: TF-CIS-005
+    title: Require RDS backup retention
+    target: terraform
+    check: require_rds_backup_retention
+    severity: high
+    params:
+      min_days: 7
+    controls: [CIS-AWS-2.7]
+
+  - id: TF-CIS-006
+    title: Require RDS deletion protection
+    target: terraform
+    check: require_rds_deletion_protection
+    severity: high
+    controls: [CIS-AWS-2.6]
+
+  - id: TF-CIS-007
+    title: Require KMS key rotation
+    target: terraform
+    check: require_kms_key_rotation
+    severity: high
+    controls: [CIS-AWS-3.8]
+
+  - id: TF-CIS-008
+    title: Require IMDSv2
+    target: terraform
+    check: require_imdsv2
+    severity: high
+    controls: [CIS-AWS-1.14]
+
+  - id: TF-CIS-009
+    title: Disallow SSH from the internet
+    target: terraform
+    check: disallow_ssh_from_internet
+    severity: critical
+    controls: [CIS-AWS-5.2]
+
+  - id: TF-CIS-010
+    title: Disallow RDP from the internet
+    target: terraform
+    check: disallow_rdp_from_internet
+    severity: critical
+    controls: [CIS-AWS-5.3]

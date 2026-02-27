@@ -1,0 +1,123 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/ulamai/formalcloud
+  tag: v0.1.5
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+service:
+  type: ClusterIP
+  port: 443
+  targetPort: 9443
+
+webhook:
+  name: formalcloud.validating.ulamai.io
+  failurePolicy: Fail
+  timeoutSeconds: 5
+  sideEffects: None
+  matchPolicy: Equivalent
+  path: /
+  namespaceSelector: {}
+  objectSelector: {}
+  admissionReviewVersions:
+    - v1
+  operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+  resources:
+    - pods
+    - deployments
+    - statefulsets
+    - daemonsets
+    - jobs
+    - cronjobs
+
+tls:
+  caBundle: ""
+  certManager:
+    enabled: true
+    createIssuer: true
+    issuerRef:
+      name: formalcloud-selfsigned
+      kind: Issuer
+      group: cert-manager.io
+    certificateName: formalcloud-admission-cert
+    secretName: formalcloud-admission-tls
+
+caddy:
+  image:
+    repository: caddy
+    tag: "2.8.4"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+policy:
+  configMapName: ""
+  fileName: policies.yaml
+  data: |
+    schema_version: formal-cloud.policy/v1
+    policy:
+      id: org.formalcloud.admission.default
+      version: 1
+      revision: 1.0.0
+      compatibility:
+        min_engine_version: 0.1.0
+    rules:
+      - id: K8S001
+        title: Privileged containers are forbidden
+        target: kubernetes
+        check: no_privileged_containers
+        severity: critical
+      - id: K8S002
+        title: Containers require resource limits
+        target: kubernetes
+        check: require_resources_limits
+        severity: medium
+      - id: K8S003
+        title: Disallow mutable image tags
+        target: kubernetes
+        check: disallow_latest_tag
+        severity: high
+      - id: K8S004
+        title: Require non-root runtime
+        target: kubernetes
+        check: require_non_root
+        severity: high
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+  ingressNamespaceSelector: {}
+

@@ -1,0 +1,79 @@
+schema_version: formal-cloud.policy/v1
+policy:
+  id: org.formalcloud.pack.soc2.starter
+  version: 1
+  revision: 1.0.0
+  compatibility:
+    min_engine_version: 0.1.0
+rules:
+  - id: TF-SOC2-001
+    title: No public S3 buckets
+    target: terraform
+    check: no_public_s3
+    severity: critical
+    controls: [SOC2-CC6.1]
+
+  - id: TF-SOC2-002
+    title: Encrypt storage resources
+    target: terraform
+    check: require_encryption
+    severity: high
+    params:
+      resource_types:
+        - aws_s3_bucket
+        - aws_db_instance
+        - aws_ebs_volume
+    controls: [SOC2-CC6.7]
+
+  - id: TF-SOC2-003
+    title: Restrict public ingress CIDRs
+    target: terraform
+    check: disallow_wide_cidr_ingress
+    severity: high
+    controls: [SOC2-CC6.6]
+
+  - id: TF-SOC2-004
+    title: Enforce log retention
+    target: terraform
+    check: require_log_retention_min_days
+    severity: medium
+    params:
+      min_days: 90
+    controls: [SOC2-CC7.2]
+
+  - id: TF-SOC2-005
+    title: Block destructive operations in production
+    target: terraform
+    check: no_destructive_changes
+    severity: high
+    params:
+      protected_workspaces: [prod, production]
+    controls: [SOC2-CC8.1]
+
+  - id: K8S-SOC2-001
+    title: Block privileged containers
+    target: kubernetes
+    check: no_privileged_containers
+    severity: critical
+    controls: [SOC2-CC6.2]
+
+  - id: K8S-SOC2-002
+    title: Require container resource limits
+    target: kubernetes
+    check: require_resources_limits
+    severity: medium
+    controls: [SOC2-CC7.1]
+
+  - id: K8S-SOC2-003
+    title: Require non-root workloads
+    target: kubernetes
+    check: require_non_root
+    severity: high
+    controls: [SOC2-CC6.2]
+
+  - id: K8S-SOC2-004
+    title: Disallow mutable image tags
+    target: kubernetes
+    check: disallow_latest_tag
+    severity: high
+    controls: [SOC2-CC8.1]

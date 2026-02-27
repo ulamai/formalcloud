@@ -1,0 +1,43 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ include "formal-cloud-admission.fullname" . }}
+  labels:
+    {{- include "formal-cloud-admission.labels" . | nindent 4 }}
+  {{- if .Values.tls.certManager.enabled }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ .Values.tls.certManager.certificateName }}
+  {{- end }}
+webhooks:
+  - name: {{ .Values.webhook.name }}
+    admissionReviewVersions:
+      {{- toYaml .Values.webhook.admissionReviewVersions | nindent 6 }}
+    sideEffects: {{ .Values.webhook.sideEffects }}
+    matchPolicy: {{ .Values.webhook.matchPolicy }}
+    timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+    clientConfig:
+      service:
+        namespace: {{ .Release.Namespace }}
+        name: {{ include "formal-cloud-admission.fullname" . }}
+        path: {{ .Values.webhook.path }}
+        port: {{ .Values.service.port }}
+      {{- if and (not .Values.tls.certManager.enabled) .Values.tls.caBundle }}
+      caBundle: {{ .Values.tls.caBundle | quote }}
+      {{- end }}
+    rules:
+      - apiGroups: ["*"]
+        apiVersions: ["*"]
+        operations:
+          {{- toYaml .Values.webhook.operations | nindent 10 }}
+        resources:
+          {{- toYaml .Values.webhook.resources | nindent 10 }}
+        scope: "*"
+    {{- with .Values.webhook.namespaceSelector }}
+    namespaceSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.webhook.objectSelector }}
+    objectSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}

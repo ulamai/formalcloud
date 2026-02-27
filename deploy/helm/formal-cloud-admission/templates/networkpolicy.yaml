@@ -1,0 +1,28 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "formal-cloud-admission.fullname" . }}
+  labels:
+    {{- include "formal-cloud-admission.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "formal-cloud-admission.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            {{- if .Values.networkPolicy.ingressNamespaceSelector }}
+            {{- toYaml .Values.networkPolicy.ingressNamespaceSelector | nindent 12 }}
+            {{- else }}
+            matchLabels: {}
+            {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.service.targetPort }}
+  egress:
+    - {}
+{{- end }}

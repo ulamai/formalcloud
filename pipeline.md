@@ -92,6 +92,19 @@ This track translates field demand (security/platform teams + auditors) into pro
    - Evidence-pack manifest includes control-oriented view (`controls`).
    - Control owner fields: failing/passing control IDs and per-control rule linkage.
 
+## OSS Product Readiness (User Adoption)
+
+1. Governance/legal docs: implemented.
+   - `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `CHANGELOG.md`
+2. Distribution channels: implemented baseline.
+   - Dockerfile + release publish workflow (`PyPI` optional, `GHCR`)
+3. Admission production assets: implemented baseline.
+   - Helm chart with TLS sidecar and cert-manager pattern
+4. Starter policy packs: implemented.
+   - SOC2, CIS AWS, NIST 800-53 starter packs
+5. CI templates: implemented.
+   - GitHub Actions, GitLab CI, Jenkins examples with artifact retention
+
 ## Ecosystem Aggregation Strategy
 
 ### What to adopt from OPA

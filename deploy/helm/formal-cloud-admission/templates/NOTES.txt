@@ -1,0 +1,11 @@
+FormalCloud admission webhook has been installed.
+
+Release: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+Service: {{ include "formal-cloud-admission.fullname" . }}:{{ .Values.service.port }}
+
+Production notes:
+1. Ensure cert-manager is installed when tls.certManager.enabled=true.
+2. Verify ValidatingWebhookConfiguration has CA injected.
+3. Start with failurePolicy=Ignore for audit rollout if needed, then move to Fail.
+4. Review docs/admission-production.md for hardened deployment guidance.
