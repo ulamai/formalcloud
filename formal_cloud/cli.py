@@ -16,6 +16,7 @@ from .ir_diff import diff_compiled_policies
 from .junit import certificate_to_junit_xml
 from .kubernetes import load_and_normalize_manifests
 from .policy import compile_policy_file
+from .policy_test import run_policy_tests
 from .replay import replay_check
 from .sarif import certificate_to_sarif
 from .terraform import normalize_plan
@@ -51,6 +52,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="exit non-zero if rules or exceptions differ",
     )
+    policy_test = policy_subparsers.add_parser(
+        "test", help="run policy test fixtures against golden certificates"
+    )
+    policy_test.add_argument("--cases", required=True, help="policy test cases YAML/JSON file")
+    policy_test.add_argument("--out", help="optional policy test report JSON output")
+    policy_test.add_argument(
+        "--update-golden",
+        action="store_true",
+        help="update golden certificate files with current deterministic outputs",
+    )
 
     verify_parser = subparsers.add_parser("verify", help="run deterministic policy verification")
     verify_subparsers = verify_parser.add_subparsers(dest="target", required=True)
@@ -59,6 +70,10 @@ def build_parser() -> argparse.ArgumentParser:
     _add_policy_source_args(tf_parser)
     tf_parser.add_argument("--plan", required=True, help="terraform show -json plan file")
     tf_parser.add_argument("--workspace", default="default", help="Terraform workspace name")
+    tf_parser.add_argument(
+        "--profile",
+        help="optional rollout profile name for audit/enforce staging",
+    )
     tf_parser.add_argument("--out", required=True, help="certificate/evidence output JSON")
     tf_parser.add_argument("--trace", help="optional trace log output (jsonl)")
     tf_parser.add_argument("--signing-key-file", help="optional HMAC key file to sign certificate")
@@ -72,6 +87,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="path to YAML manifest (repeat flag for multiple files)",
     )
     k8s_parser.add_argument("--manifest-dir", help="manifest root used with --changed-files-file")
+    k8s_parser.add_argument(
+        "--profile",
+        help="optional rollout profile name for audit/enforce staging",
+    )
     k8s_parser.add_argument(
         "--changed-files-file",
         help="newline-separated changed files list for fast-path verification",
@@ -90,6 +109,10 @@ def build_parser() -> argparse.ArgumentParser:
     _add_policy_source_args(replay_tf)
     replay_tf.add_argument("--plan", required=True, help="terraform show -json plan file")
     replay_tf.add_argument("--workspace", default="default", help="Terraform workspace")
+    replay_tf.add_argument(
+        "--profile",
+        help="optional rollout profile name for replay parity",
+    )
     replay_tf.add_argument("--expected-certificate", required=True, help="expected certificate JSON")
     replay_tf.add_argument("--out", help="optional replay report JSON")
 
@@ -101,6 +124,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="path to YAML manifest (repeat flag for multiple files)",
     )
     replay_k8s.add_argument("--manifest-dir", help="manifest root used with --changed-files-file")
+    replay_k8s.add_argument(
+        "--profile",
+        help="optional rollout profile name for replay parity",
+    )
     replay_k8s.add_argument(
         "--changed-files-file",
         help="newline-separated changed files list for fast-path verification",
@@ -287,6 +314,21 @@ def main(argv: list[str] | None = None) -> int:
             print(f"policy diff compatible={report['compatible']} has_diff={has_diff}")
             return 8 if args.fail_on_diff and has_diff else 0
 
+        if args.command == "policy" and args.policy_command == "test":
+            report = run_policy_tests(
+                cases_path=Path(args.cases),
+                update_golden=bool(args.update_golden),
+            )
+            if args.out:
+                write_json(Path(args.out), report)
+            summary = report["summary"]
+            print(
+                f"policy tests pass={summary['pass']} "
+                f"cases={summary['total_cases']} failed={summary['failed_cases']} "
+                f"updated={args.update_golden}"
+            )
+            return 0 if summary["pass"] else 9
+
         if args.command == "verify" and args.target == "terraform":
             compiled = _load_compiled_policy(args, trace)
             plan = load_json(Path(args.plan))
@@ -295,6 +337,7 @@ def main(argv: list[str] | None = None) -> int:
                 compiled=compiled,
                 normalized_plan=normalized_plan,
                 workspace=args.workspace,
+                profile=getattr(args, "profile", None),
                 trace=trace,
             )
             if trace_path:
@@ -326,6 +369,7 @@ def main(argv: list[str] | None = None) -> int:
             certificate = verify_kubernetes(
                 compiled=compiled,
                 normalized_manifests=normalized,
+                profile=getattr(args, "profile", None),
                 trace=trace,
             )
             if trace_path:
@@ -359,6 +403,7 @@ def main(argv: list[str] | None = None) -> int:
                 compiled=compiled,
                 normalized_plan=normalized_plan,
                 workspace=args.workspace,
+                profile=getattr(args, "profile", None),
                 trace=trace,
             )
             expected = load_json(Path(args.expected_certificate))
@@ -378,6 +423,7 @@ def main(argv: list[str] | None = None) -> int:
             replayed = verify_kubernetes(
                 compiled=compiled,
                 normalized_manifests=normalized,
+                profile=getattr(args, "profile", None),
                 trace=trace,
             )
             expected = load_json(Path(args.expected_certificate))

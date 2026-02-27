@@ -35,7 +35,7 @@ class ExportTests(unittest.TestCase):
         )
 
     def test_evidence_pack_creation(self) -> None:
-        compiled = compile_policy_file(Path("examples/policies.yaml"))
+        compiled = compile_policy_file(Path("examples/policies-controls.yaml"))
         plan = normalize_plan(load_json(Path("examples/terraform-plan.json")))
         certificate = verify_terraform(compiled, normalized_plan=plan, workspace="prod")
 
@@ -58,6 +58,8 @@ class ExportTests(unittest.TestCase):
             self.assertEqual(manifest["schema_version"], "formal-cloud.evidence-pack/v1")
             self.assertEqual(manifest["certificate_id"], certificate["certificate_id"])
             self.assertGreaterEqual(len(manifest["files"]), 3)
+            self.assertGreaterEqual(manifest["controls"]["mapped_controls"], 1)
+            self.assertGreaterEqual(len(manifest["controls"]["failing_control_ids"]), 1)
 
 
 if __name__ == "__main__":

@@ -44,6 +44,7 @@ def create_evidence_pack(
         "policy": certificate.get("policy"),
         "subject": certificate.get("subject"),
         "summary": certificate.get("summary"),
+        "controls": _control_view(certificate),
         "files": copied_files,
     }
 
@@ -59,4 +60,44 @@ def _copy_with_hash(source: Path, target: Path) -> dict[str, Any]:
         "path": str(target),
         "sha256": sha256_text(text),
         "bytes": target.stat().st_size,
+    }
+
+
+def _control_view(certificate: dict[str, Any]) -> dict[str, Any]:
+    summary = certificate.get("summary") or {}
+    coverage = summary.get("control_coverage") or {}
+    raw_controls = coverage.get("controls") or []
+    if not isinstance(raw_controls, list):
+        raw_controls = []
+
+    controls: list[dict[str, Any]] = []
+    for control in raw_controls:
+        if not isinstance(control, dict):
+            continue
+        control_id = control.get("id")
+        if not isinstance(control_id, str) or not control_id:
+            continue
+        status = str(control.get("status") or "unknown")
+        controls.append(
+            {
+                "id": control_id,
+                "status": status,
+                "rules": sorted(str(rule_id) for rule_id in (control.get("rules") or [])),
+                "failed_rules": int(control.get("failed_rules") or 0),
+                "passed_rules": int(control.get("passed_rules") or 0),
+                "violations": int(control.get("violations") or 0),
+                "waived_violations": int(control.get("waived_violations") or 0),
+            }
+        )
+
+    controls.sort(key=lambda item: item["id"])
+    failing_ids = [item["id"] for item in controls if item["status"] == "fail"]
+    passing_ids = [item["id"] for item in controls if item["status"] == "pass"]
+    return {
+        "mapped_controls": len(controls),
+        "failing_controls": len(failing_ids),
+        "passing_controls": len(passing_ids),
+        "failing_control_ids": failing_ids,
+        "passing_control_ids": passing_ids,
+        "controls": controls,
     }

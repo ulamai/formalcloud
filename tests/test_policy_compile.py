@@ -86,6 +86,39 @@ class PolicyCompileTests(unittest.TestCase):
                 source="<test>",
             )
 
+    def test_compile_policy_with_rollout_profiles(self) -> None:
+        compiled = compile_policy_file(Path("examples/policies-rollout.yaml"))
+        self.assertEqual(compiled.rollout["controls"]["SOC2-CC6.1"], "audit")
+        self.assertEqual(
+            compiled.rollout["profiles"]["prod"]["controls"]["SOC2-CC6.1"],
+            "enforce",
+        )
+
+    def test_compile_policy_rollout_rejects_unknown_rule_reference(self) -> None:
+        with self.assertRaises(ValueError):
+            compile_policy_document(
+                {
+                    "schema_version": "formal-cloud.policy/v1",
+                    "policy": {
+                        "id": "org.rollout.invalid",
+                        "version": 1,
+                        "revision": "1.0.0",
+                        "compatibility": {},
+                        "rollout": {"rules": {"DOES_NOT_EXIST": "audit"}},
+                    },
+                    "rules": [
+                        {
+                            "id": "TF001",
+                            "title": "No public S3 buckets",
+                            "target": "terraform",
+                            "check": "no_public_s3",
+                            "severity": "critical",
+                        }
+                    ],
+                },
+                source="<test>",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

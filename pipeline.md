@@ -78,13 +78,19 @@ This track translates field demand (security/platform teams + auditors) into pro
 
 ### Adoption Track Status
 
-1. Audit-native control mapping and evidence: implemented baseline in this branch.
+1. Audit-native control mapping and evidence: implemented.
    - Compiler accepts `controls` and `guideline_url`.
    - Verifier emits `summary.control_coverage`.
    - SARIF exporter includes control tags and guideline links.
-2. Noise management and trust: partial (confidence model already implemented).
-3. Policy lifecycle operations: pending.
-4. Auditor-ready evidence continuity: partial (evidence-pack exists; control views pending).
+2. Noise management and trust: implemented baseline.
+   - Rollout staging in policy metadata with profile-aware `audit`/`enforce`.
+   - Rule-level and control-level mode resolution in verifier.
+3. Policy lifecycle operations: implemented baseline.
+   - `formal-cloud policy test --cases ...` fixture runner.
+   - Golden certificate update mode (`--update-golden`).
+4. Auditor-ready evidence continuity: implemented baseline.
+   - Evidence-pack manifest includes control-oriented view (`controls`).
+   - Control owner fields: failing/passing control IDs and per-control rule linkage.
 
 ## Ecosystem Aggregation Strategy
 

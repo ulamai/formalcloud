@@ -1,0 +1,50 @@
+schema_version: formal-cloud.policy/v1
+policy:
+  id: org.rollout.cloud-security
+  version: 1
+  revision: 1.0.0
+  compatibility:
+    min_engine_version: 0.1.0
+  rollout:
+    default_mode: enforce
+    controls:
+      SOC2-CC6.1: audit
+    profiles:
+      prod:
+        controls:
+          SOC2-CC6.1: enforce
+      dev:
+        default_mode: audit
+        rules:
+          TF003: enforce
+rules:
+  - id: TF001
+    title: No public S3 buckets
+    target: terraform
+    check: no_public_s3
+    severity: critical
+    controls:
+      - SOC2-CC6.1
+
+  - id: TF002
+    title: Encryption required for S3 and RDS
+    target: terraform
+    check: require_encryption
+    severity: high
+    params:
+      resource_types:
+        - aws_s3_bucket
+        - aws_db_instance
+    controls:
+      - SOC2-CC6.1
+
+  - id: TF003
+    title: No destructive changes in protected workspaces
+    target: terraform
+    check: no_destructive_changes
+    severity: high
+    params:
+      protected_workspaces:
+        - prod
+    controls:
+      - SOC2-CC7.2

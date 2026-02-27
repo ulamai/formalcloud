@@ -46,6 +46,7 @@ def verify_terraform(
     compiled: CompiledPolicySet,
     normalized_plan: dict[str, Any],
     workspace: str,
+    profile: str | None = None,
     trace: TraceLogger | None = None,
 ) -> dict[str, Any]:
     resource_changes = normalized_plan.get("resource_changes") or []
@@ -119,6 +120,7 @@ def verify_terraform(
             violations=violations,
             exceptions=active_rule_exceptions,
         )
+        mode = _resolve_rule_mode(compiled.rollout, rule, profile=profile)
 
         result = _build_rule_result(
             rule=rule,
@@ -127,6 +129,7 @@ def verify_terraform(
             waived_violations=waived_violations,
             applied_exceptions=applied_exceptions,
             subject_digest=subject_digest,
+            mode=mode,
         )
         if trace:
             trace.event(
@@ -134,31 +137,38 @@ def verify_terraform(
                 {
                     "rule_id": rule.rule_id,
                     "passed": result.passed,
+                    "mode": result.mode,
                     "violation_count": len(result.violations),
                     "waived_violation_count": len(result.waived_violations),
                 },
             )
         results.append(result)
 
+    subject_metadata = {
+        "workspace": workspace,
+        "resource_change_count": len(resource_changes),
+        "analysis": terraform_confidence,
+    }
+    if profile:
+        subject_metadata["profile"] = profile
+
     return _build_certificate(
         compiled=compiled,
         target="terraform",
         subject_type="terraform_plan",
         subject_digest=subject_digest,
-        subject_metadata={
-            "workspace": workspace,
-            "resource_change_count": len(resource_changes),
-            "analysis": terraform_confidence,
-        },
+        subject_metadata=subject_metadata,
         results=results,
         evaluation_time=evaluation_time,
         confidence=terraform_confidence,
+        profile=profile,
     )
 
 
 def verify_kubernetes(
     compiled: CompiledPolicySet,
     normalized_manifests: dict[str, Any],
+    profile: str | None = None,
     trace: TraceLogger | None = None,
 ) -> dict[str, Any]:
     resources = normalized_manifests.get("resources") or []
@@ -205,6 +215,7 @@ def verify_kubernetes(
             violations=violations,
             exceptions=active_rule_exceptions,
         )
+        mode = _resolve_rule_mode(compiled.rollout, rule, profile=profile)
 
         result = _build_rule_result(
             rule=rule,
@@ -213,6 +224,7 @@ def verify_kubernetes(
             waived_violations=waived_violations,
             applied_exceptions=applied_exceptions,
             subject_digest=subject_digest,
+            mode=mode,
         )
         if trace:
             trace.event(
@@ -220,21 +232,27 @@ def verify_kubernetes(
                 {
                     "rule_id": rule.rule_id,
                     "passed": result.passed,
+                    "mode": result.mode,
                     "violation_count": len(result.violations),
                     "waived_violation_count": len(result.waived_violations),
                 },
             )
         results.append(result)
 
+    subject_metadata = {"resource_count": len(resources)}
+    if profile:
+        subject_metadata["profile"] = profile
+
     return _build_certificate(
         compiled=compiled,
         target="kubernetes",
         subject_type="kubernetes_manifests",
         subject_digest=subject_digest,
-        subject_metadata={"resource_count": len(resources)},
+        subject_metadata=subject_metadata,
         results=results,
         evaluation_time=evaluation_time,
         confidence=confidence,
+        profile=profile,
     )
 
 
@@ -245,6 +263,7 @@ def _build_rule_result(
     waived_violations: list[RuleViolation],
     applied_exceptions: list[dict[str, Any]],
     subject_digest: str,
+    mode: str,
 ) -> RuleResult:
     sorted_violations = tuple(sorted(violations, key=lambda item: (item.entity, item.message)))
     sorted_waived_violations = tuple(
@@ -288,6 +307,7 @@ def _build_rule_result(
         waived_violations=sorted_waived_violations,
         applied_exceptions=sorted_applied_exceptions,
         proof=proof,
+        mode=mode,
     )
 
 
@@ -300,12 +320,15 @@ def _build_certificate(
     results: list[RuleResult],
     evaluation_time: datetime,
     confidence: dict[str, Any],
+    profile: str | None = None,
 ) -> dict[str, Any]:
     sorted_results = sorted(results, key=lambda item: item.rule_id)
     result_dicts = [result.to_dict() for result in sorted_results]
 
     failed_rules = [result for result in sorted_results if not result.passed]
-    decision = "accept" if not failed_rules else "reject"
+    enforce_failed_rules = [result for result in failed_rules if result.mode == "enforce"]
+    audit_failed_rules = [result for result in failed_rules if result.mode == "audit"]
+    decision = "accept" if not enforce_failed_rules else "reject"
 
     summary = {
         "total_rules": len(sorted_results),
@@ -319,6 +342,13 @@ def _build_certificate(
         "exception_debt": _exception_debt_metrics(compiled.exceptions, evaluation_time),
         "control_coverage": _control_coverage_summary(sorted_results),
     }
+    if compiled.rollout or profile or audit_failed_rules:
+        summary["rollout"] = _rollout_summary(
+            sorted_results=sorted_results,
+            enforce_failed_rules=enforce_failed_rules,
+            audit_failed_rules=audit_failed_rules,
+            profile=profile,
+        )
 
     certificate_id = compute_certificate_id(
         policy_digest=compiled.digest,
@@ -329,6 +359,19 @@ def _build_certificate(
         decision=decision,
     )
 
+    policy_obj: dict[str, Any] = {
+        "schema_version": compiled.schema_version,
+        "policy_set_id": compiled.policy_set_id,
+        "policy_revision": compiled.policy_revision,
+        "compatibility": compiled.compatibility,
+        "exception_policy": compiled.exception_policy,
+        "version": compiled.version,
+        "policy_digest": compiled.digest,
+        "exception_count": len(compiled.exceptions),
+    }
+    if compiled.rollout:
+        policy_obj["rollout"] = compiled.rollout
+
     return {
         "schema_version": "formal-cloud/v1",
         "certificate_id": certificate_id,
@@ -336,16 +379,7 @@ def _build_certificate(
         "target": target,
         "decision": decision,
         "confidence": confidence,
-        "policy": {
-            "schema_version": compiled.schema_version,
-            "policy_set_id": compiled.policy_set_id,
-            "policy_revision": compiled.policy_revision,
-            "compatibility": compiled.compatibility,
-            "exception_policy": compiled.exception_policy,
-            "version": compiled.version,
-            "policy_digest": compiled.digest,
-            "exception_count": len(compiled.exceptions),
-        },
+        "policy": policy_obj,
         "subject": {
             "type": subject_type,
             "digest": subject_digest,
@@ -479,6 +513,54 @@ def _control_coverage_summary(results: list[RuleResult]) -> dict[str, Any]:
         "failing_controls": sum(1 for control in controls if control["status"] == "fail"),
         "controls": controls,
     }
+
+
+def _rollout_summary(
+    sorted_results: list[RuleResult],
+    enforce_failed_rules: list[RuleResult],
+    audit_failed_rules: list[RuleResult],
+    profile: str | None,
+) -> dict[str, Any]:
+    return {
+        "profile": profile or "default",
+        "enforced_rules": sum(1 for result in sorted_results if result.mode == "enforce"),
+        "audited_rules": sum(1 for result in sorted_results if result.mode == "audit"),
+        "enforce_failed_rules": len(enforce_failed_rules),
+        "audit_failed_rules": len(audit_failed_rules),
+        "enforce_failed_rule_ids": sorted(result.rule_id for result in enforce_failed_rules),
+        "audit_failed_rule_ids": sorted(result.rule_id for result in audit_failed_rules),
+    }
+
+
+def _resolve_rule_mode(rollout: dict[str, Any], rule: PolicyRule, profile: str | None) -> str:
+    if not rollout:
+        return "enforce"
+
+    mode = str(rollout.get("default_mode") or "enforce")
+    mode = _apply_control_modes(mode, rule.controls, rollout.get("controls") or {})
+    mode = str((rollout.get("rules") or {}).get(rule.rule_id, mode))
+
+    if profile:
+        profile_conf = (rollout.get("profiles") or {}).get(profile) or {}
+        if profile_conf:
+            mode = str(profile_conf.get("default_mode") or mode)
+            mode = _apply_control_modes(mode, rule.controls, profile_conf.get("controls") or {})
+            mode = str((profile_conf.get("rules") or {}).get(rule.rule_id, mode))
+
+    return mode if mode in {"audit", "enforce"} else "enforce"
+
+
+def _apply_control_modes(current_mode: str, controls: tuple[str, ...], modes: dict[str, Any]) -> str:
+    has_audit = False
+    for control_id in controls:
+        mode = modes.get(control_id)
+        if mode == "enforce":
+            return "enforce"
+        if mode == "audit":
+            has_audit = True
+    if has_audit:
+        return "audit"
+    return current_mode
 
 
 def _analyze_terraform_confidence(resource_changes: list[dict[str, Any]]) -> dict[str, Any]:

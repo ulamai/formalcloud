@@ -71,6 +71,7 @@ def compile_policy_document(
     rules = canonical["rules"]
     exceptions = canonical["exceptions"]
     exception_policy = canonical["exception_policy"]
+    rollout = canonical["rollout"]
 
     if not isinstance(rules, list) or not rules:
         raise ValueError(f"policy rules in {source} must be a non-empty list")
@@ -124,37 +125,47 @@ def compile_policy_document(
             )
         )
 
+    rule_ids = {rule.rule_id for rule in compiled_rules}
+
     compiled_exceptions = _compile_exceptions(
         exceptions=exceptions,
-        rule_ids={rule.rule_id for rule in compiled_rules},
+        rule_ids=rule_ids,
         exception_policy=exception_policy,
         source=source,
         now_utc=datetime.now(timezone.utc),
     )
+    normalized_rollout = _normalize_rollout_policy(
+        rollout=rollout,
+        rule_ids=rule_ids,
+        source=source,
+    )
     sorted_exceptions = sorted(compiled_exceptions, key=lambda item: item.exception_id)
 
     compiled_rules.sort(key=lambda rule: rule.rule_id)
+    digest_seed: dict[str, Any] = {
+        "schema_version": canonical["schema_version"],
+        "policy_set_id": canonical["policy_set_id"],
+        "policy_revision": canonical["policy_revision"],
+        "compatibility": canonical["compatibility"],
+        "exception_policy": exception_policy,
+        "version": version,
+        "rules": [rule.to_dict() for rule in compiled_rules],
+        "exceptions": [exc.to_dict() for exc in sorted_exceptions],
+    }
+    if normalized_rollout:
+        digest_seed["rollout"] = normalized_rollout
+
     compiled = CompiledPolicySet(
         schema_version=canonical["schema_version"],
         policy_set_id=canonical["policy_set_id"],
         policy_revision=canonical["policy_revision"],
         compatibility=canonical["compatibility"],
         exception_policy=exception_policy,
+        rollout=normalized_rollout,
         version=version,
         rules=tuple(compiled_rules),
         exceptions=tuple(sorted_exceptions),
-        digest=sha256_obj(
-            {
-                "schema_version": canonical["schema_version"],
-                "policy_set_id": canonical["policy_set_id"],
-                "policy_revision": canonical["policy_revision"],
-                "compatibility": canonical["compatibility"],
-                "exception_policy": exception_policy,
-                "version": version,
-                "rules": [rule.to_dict() for rule in compiled_rules],
-                "exceptions": [exc.to_dict() for exc in sorted_exceptions],
-            }
-        ),
+        digest=sha256_obj(digest_seed),
     )
 
     if trace:
@@ -169,6 +180,9 @@ def compile_policy_document(
                 "rule_count": len(compiled.rules),
                 "exception_count": len(compiled.exceptions),
                 "exception_policy": compiled.exception_policy,
+                "rollout_profiles": sorted(compiled.rollout.get("profiles", {}).keys())
+                if compiled.rollout
+                else [],
             },
         )
 
@@ -201,6 +215,7 @@ def _normalize_policy_document(
     policy_revision = policy_meta.get("revision")
     compatibility = policy_meta.get("compatibility") or {}
     exception_policy = policy_meta.get("exception_policy") or {}
+    rollout = policy_meta.get("rollout") or {}
 
     if not isinstance(policy_set_id, str) or not policy_set_id.strip():
         raise ValueError(f"policy.id in {source} must be a non-empty string")
@@ -212,6 +227,8 @@ def _normalize_policy_document(
         raise ValueError(f"policy.compatibility in {source} must be a mapping")
     if not isinstance(exception_policy, dict):
         raise ValueError(f"policy.exception_policy in {source} must be a mapping")
+    if not isinstance(rollout, dict):
+        raise ValueError(f"policy.rollout in {source} must be a mapping")
 
     normalized_compatibility = _normalize_compatibility(compatibility, source=source)
     normalized_exception_policy = _normalize_exception_policy(exception_policy, source=source)
@@ -222,6 +239,7 @@ def _normalize_policy_document(
         "policy_revision": policy_revision,
         "compatibility": normalized_compatibility,
         "exception_policy": normalized_exception_policy,
+        "rollout": rollout,
         "version": version,
         "rules": rules,
         "exceptions": exceptions,
@@ -245,6 +263,7 @@ def _migrate_legacy_document(
             "migrated_from": LEGACY_SCHEMA_VERSION,
         },
         "exception_policy": {},
+        "rollout": {},
         "version": version,
         "rules": rules,
         "exceptions": [],
@@ -317,6 +336,137 @@ def _read_rule_controls(raw_rule: dict[str, Any], source: str, rule_id: Any) -> 
         seen.add(item)
         normalized.append(item)
     return tuple(sorted(normalized))
+
+
+def _normalize_rollout_policy(
+    rollout: dict[str, Any], rule_ids: set[str], source: str
+) -> dict[str, Any]:
+    if not rollout:
+        return {}
+    if not isinstance(rollout, dict):
+        raise ValueError(f"policy.rollout in {source} must be a mapping")
+
+    allowed_keys = {"default_mode", "rules", "controls", "profiles"}
+    unknown = sorted(key for key in rollout if key not in allowed_keys)
+    if unknown:
+        raise ValueError(f"unsupported rollout keys in {source}: {unknown}")
+
+    normalized: dict[str, Any] = {}
+    default_mode = _normalize_rollout_mode(rollout.get("default_mode"), source=source, scope="policy")
+    if default_mode != "enforce":
+        normalized["default_mode"] = default_mode
+
+    rules = _normalize_rollout_rules(
+        rollout.get("rules") or {},
+        rule_ids=rule_ids,
+        source=source,
+        scope="policy.rules",
+    )
+    if rules:
+        normalized["rules"] = rules
+
+    controls = _normalize_rollout_controls(
+        rollout.get("controls") or {},
+        source=source,
+        scope="policy.controls",
+    )
+    if controls:
+        normalized["controls"] = controls
+
+    profiles = rollout.get("profiles") or {}
+    if profiles:
+        if not isinstance(profiles, dict):
+            raise ValueError(f"policy.rollout.profiles in {source} must be a mapping")
+        normalized_profiles: dict[str, Any] = {}
+        for profile_name in sorted(profiles):
+            raw_profile = profiles[profile_name]
+            if not isinstance(profile_name, str) or not profile_name.strip():
+                raise ValueError(f"policy.rollout profile names in {source} must be non-empty strings")
+            if not isinstance(raw_profile, dict):
+                raise ValueError(
+                    f"policy.rollout.profiles.{profile_name} in {source} must be a mapping"
+                )
+
+            profile_allowed_keys = {"default_mode", "rules", "controls"}
+            profile_unknown = sorted(key for key in raw_profile if key not in profile_allowed_keys)
+            if profile_unknown:
+                raise ValueError(
+                    f"unsupported rollout profile keys for '{profile_name}' in {source}: {profile_unknown}"
+                )
+
+            normalized_profile: dict[str, Any] = {}
+            profile_mode = _normalize_rollout_mode(
+                raw_profile.get("default_mode"),
+                source=source,
+                scope=f"policy.rollout.profiles.{profile_name}",
+            )
+            if profile_mode != "enforce":
+                normalized_profile["default_mode"] = profile_mode
+
+            profile_rules = _normalize_rollout_rules(
+                raw_profile.get("rules") or {},
+                rule_ids=rule_ids,
+                source=source,
+                scope=f"policy.rollout.profiles.{profile_name}.rules",
+            )
+            if profile_rules:
+                normalized_profile["rules"] = profile_rules
+
+            profile_controls = _normalize_rollout_controls(
+                raw_profile.get("controls") or {},
+                source=source,
+                scope=f"policy.rollout.profiles.{profile_name}.controls",
+            )
+            if profile_controls:
+                normalized_profile["controls"] = profile_controls
+
+            if normalized_profile:
+                normalized_profiles[profile_name] = normalized_profile
+
+        if normalized_profiles:
+            normalized["profiles"] = normalized_profiles
+
+    return normalized
+
+
+def _normalize_rollout_mode(value: Any, source: str, scope: str) -> str:
+    if value is None:
+        return "enforce"
+    if value not in {"audit", "enforce"}:
+        raise ValueError(
+            f"{scope} in {source} must be one of audit|enforce when provided"
+        )
+    return value
+
+
+def _normalize_rollout_rules(
+    value: Any, rule_ids: set[str], source: str, scope: str
+) -> dict[str, str]:
+    if not value:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{scope} in {source} must be a mapping")
+    normalized: dict[str, str] = {}
+    for rule_id in sorted(value):
+        if rule_id not in rule_ids:
+            raise ValueError(f"{scope} in {source} references unknown rule id '{rule_id}'")
+        normalized[rule_id] = _normalize_rollout_mode(value[rule_id], source=source, scope=scope)
+    return normalized
+
+
+def _normalize_rollout_controls(value: Any, source: str, scope: str) -> dict[str, str]:
+    if not value:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{scope} in {source} must be a mapping")
+    normalized: dict[str, str] = {}
+    for control_id in sorted(value):
+        if not isinstance(control_id, str) or not control_id.strip():
+            raise ValueError(f"{scope} in {source} must use non-empty string control ids")
+        normalized[control_id] = _normalize_rollout_mode(
+            value[control_id], source=source, scope=scope
+        )
+    return normalized
 
 
 def _compile_exceptions(

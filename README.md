@@ -21,6 +21,7 @@ This project is built around three goals:
   - Stable policy schema: `formal-cloud.policy/v1`.
   - Typed rule schema (target + check + severity + params).
   - Optional control metadata per rule (`controls`, `guideline_url`) for audit mapping.
+  - Rollout staging metadata (`rollout`) with profile-aware `audit`/`enforce` modes.
   - Legacy policy migration (`legacy/v0` -> `formal-cloud.policy/v1`).
   - Rego subset adapter (`formal-cloud.rego-subset/v1`).
   - Kyverno validate-subset adapter (`formal-cloud.kyverno-subset/v1`).
@@ -30,6 +31,7 @@ This project is built around three goals:
 - Verifier loop:
   - Deterministic check dispatch by rule ID.
   - Exception-aware rule evaluation with waived violation evidence.
+  - Profile-aware staged enforcement (`audit`/`enforce`) at rule/control level.
   - Rule-level proof object with hash commitments.
   - Terraform confidence classification (`proven` / `assumed` / `unknown`).
   - Exception debt metrics in certificate summaries.
@@ -42,6 +44,8 @@ This project is built around three goals:
   - Signed bundle format with version pinning (`formal-cloud.bundle/v1`).
 - Evidence exports:
   - SARIF, JUnit, GitHub Checks, in-toto statement, and evidence-pack exports.
+- Policy lifecycle:
+  - Fixture-based `policy test` command with golden certificate updates.
 - Replay and diff:
   - Deterministic replay checks against expected certificates.
   - Policy IR diff (`left` vs `right`) for adapter parity reviews.
@@ -175,6 +179,17 @@ formal-cloud verify terraform \
   --trace out/terraform-trace.jsonl
 ```
 
+Profile-based rollout verification (`audit`/`enforce` staging):
+
+```bash
+formal-cloud verify terraform \
+  --policies examples/policies-rollout.yaml \
+  --plan examples/terraform-plan.json \
+  --workspace dev \
+  --profile dev \
+  --out out/terraform-rollout-dev.json
+```
+
 Certificate summary includes control-level coverage when rules define `controls` metadata.
 
 Control-mapped verification example:
@@ -286,6 +301,15 @@ formal-cloud policy diff \
   --fail-on-diff
 ```
 
+Run fixture-based policy lifecycle tests (and update goldens):
+
+```bash
+formal-cloud policy test \
+  --cases examples/policy-tests.yaml \
+  --update-golden \
+  --out out/policy-tests-report.json
+```
+
 Replay a prior certificate deterministically:
 
 ```bash
@@ -341,6 +365,8 @@ formal-cloud export evidence-pack \
   --out-dir out/evidence-pack
 ```
 
+Evidence pack manifests include a control-oriented view (`controls`) for control owners.
+
 Benchmark reproducibility corpus:
 
 ```bash
@@ -386,6 +412,7 @@ Exit codes:
 - `6`: bundle verification failed
 - `7`: replay verification mismatch
 - `8`: policy diff mismatch (with `--fail-on-diff`)
+- `9`: policy test golden mismatch
 
 Run tests (stdlib only):
 

@@ -65,13 +65,14 @@ class CompiledPolicySet:
     policy_revision: str
     compatibility: dict[str, Any]
     exception_policy: dict[str, Any]
+    rollout: dict[str, Any]
     version: int
     rules: tuple[PolicyRule, ...]
     exceptions: tuple[PolicyException, ...]
     digest: str
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        value: dict[str, Any] = {
             "schema_version": self.schema_version,
             "policy_set_id": self.policy_set_id,
             "policy_revision": self.policy_revision,
@@ -82,6 +83,9 @@ class CompiledPolicySet:
             "rules": [rule.to_dict() for rule in self.rules],
             "exceptions": [exc.to_dict() for exc in self.exceptions],
         }
+        if self.rollout:
+            value["rollout"] = self.rollout
+        return value
 
 
 @dataclass(frozen=True)
@@ -113,6 +117,7 @@ class RuleResult:
     waived_violations: tuple[RuleViolation, ...]
     applied_exceptions: tuple[dict[str, Any], ...]
     proof: dict[str, Any]
+    mode: str = "enforce"
 
     def to_dict(self) -> dict[str, Any]:
         value: dict[str, Any] = {
@@ -132,4 +137,6 @@ class RuleResult:
             value["guideline_url"] = self.guideline_url
         if self.controls:
             value["controls"] = list(self.controls)
+        if self.mode != "enforce":
+            value["mode"] = self.mode
         return value

@@ -432,6 +432,30 @@ class CLITests(unittest.TestCase):
             self.assertEqual(replay_rc, 0)
             self.assertTrue(load_json(report)["valid"])
 
+    def test_cli_rollout_profile_audit_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cert = Path(tmpdir) / "terraform-rollout-dev.json"
+            rc = main(
+                [
+                    "verify",
+                    "terraform",
+                    "--policies",
+                    "examples/policies-rollout.yaml",
+                    "--plan",
+                    "examples/terraform-plan.json",
+                    "--workspace",
+                    "dev",
+                    "--profile",
+                    "dev",
+                    "--out",
+                    str(cert),
+                ]
+            )
+            self.assertEqual(rc, 0)
+            certificate = load_json(cert)
+            self.assertEqual(certificate["decision"], "accept")
+            self.assertGreaterEqual(certificate["summary"]["rollout"]["audit_failed_rules"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

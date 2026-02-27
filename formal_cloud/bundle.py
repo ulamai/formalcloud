@@ -257,15 +257,19 @@ def _bundle_digest_seed(bundle: dict[str, Any]) -> dict[str, Any]:
 
 
 def _compiled_to_policy_document(compiled: CompiledPolicySet) -> dict[str, Any]:
+    policy_meta: dict[str, Any] = {
+        "id": compiled.policy_set_id,
+        "version": compiled.version,
+        "revision": compiled.policy_revision,
+        "compatibility": compiled.compatibility,
+        "exception_policy": compiled.exception_policy,
+    }
+    if compiled.rollout:
+        policy_meta["rollout"] = compiled.rollout
+
     return {
         "schema_version": compiled.schema_version,
-        "policy": {
-            "id": compiled.policy_set_id,
-            "version": compiled.version,
-            "revision": compiled.policy_revision,
-            "compatibility": compiled.compatibility,
-            "exception_policy": compiled.exception_policy,
-        },
+        "policy": policy_meta,
         "rules": [rule.to_dict() for rule in compiled.rules],
         "exceptions": [exc.to_dict() for exc in compiled.exceptions],
     }

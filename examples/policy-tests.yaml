@@ -1,0 +1,15 @@
+schema_version: formal-cloud.policy-tests/v1
+cases:
+  - id: terraform_rollout_dev
+    target: terraform
+    policies: policies-rollout.yaml
+    plan: terraform-plan.json
+    workspace: dev
+    profile: dev
+    golden: ../out/goldens/terraform-rollout-dev.json
+
+  - id: kubernetes_baseline
+    target: kubernetes
+    policies: policies.yaml
+    manifest: k8s-manifest.yaml
+    golden: ../out/goldens/kubernetes-baseline.json
